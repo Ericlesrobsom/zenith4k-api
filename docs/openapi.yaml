@@ -1,0 +1,1127 @@
+openapi: 3.1.0
+info:
+  title: zenith4k API local
+  version: 0.1.0
+  summary: API REST local para um agente de IA operar o painel goiptv merger
+  description: |
+    Servidor local (`zenith4k-serve`) que injeta a sessao do painel e expoe
+    JSON previsivel. O agente **nunca** ve a senha do painel.
+
+    Envelope de sucesso:
+
+        {"ok": true, "data": <corpo do painel>, "meta": {"elapsed_ms": 12}}
+
+    Envelope de erro:
+
+        {"ok": false, "error": {"code": "confirmacao_necessaria", "message": "..."}}
+
+    Autenticacao local: `Authorization: Bearer $ZENITH_API_TOKEN`.
+    Sem token configurado, o servidor aceita somente loopback (modo dev).
+
+    Este documento e servido por `GET /openapi.json` em YAML (arquivo
+    `docs/openapi.yaml`, embutido no binario com `include_str!`).
+servers:
+  - url: http://127.0.0.1:8787
+    description: bind padrao (`ZENITH_BIND`)
+security:
+  - bearerAuth: []
+tags:
+  - name: infraestrutura
+  - name: sessao
+  - name: passthrough
+  - name: revendas
+  - name: usuarios
+  - name: planos
+  - name: pedidos
+  - name: reportes
+  - name: catalogo
+  - name: suporte
+  - name: painel
+paths:
+  /health:
+    get:
+      operationId: health
+      tags: [infraestrutura]
+      summary: Status do servidor local
+      description: Publico. Nao toca no painel e nao exige login.
+      security: []
+      responses:
+        '200':
+          description: Servidor vivo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+  /openapi.json:
+    get:
+      operationId: openapi
+      tags: [infraestrutura]
+      summary: Este documento OpenAPI (YAML)
+      security: []
+      responses:
+        '200':
+          description: Conteudo de docs/openapi.yaml.
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /v1/meta:
+    get:
+      operationId: meta
+      tags: [infraestrutura]
+      summary: Versao, origem do painel e estado da sessao
+      description: Nao faz login nem toca no painel.
+      responses:
+        '200':
+          description: Metadados locais.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+  /v1/login:
+    post:
+      operationId: login
+      tags: [sessao]
+      summary: Login no painel, com 2FA quando necessario
+      description: |
+        Corpo vazio faz o login com `ZENITH_USER`/`ZENITH_PASS`.
+        Se o painel pedir 2FA, a resposta HTTP e **428** com o codigo
+        `dois_fatores_necessario`; repita com `{"codigo": "123456"}`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Resultado do login (tag `estado`).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginOutcome'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '428':
+          $ref: '#/components/responses/DoisFatores'
+        '429':
+          $ref: '#/components/responses/RateLimit'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/logout:
+    post:
+      operationId: logout
+      tags: [sessao]
+      summary: Encerra a sessao no painel
+      responses:
+        '200':
+          description: Sessao encerrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/whoami:
+    get:
+      operationId: whoami
+      tags: [sessao]
+      summary: Identidade da sessao no painel
+      description: Faz login sob demanda se ainda nao houver sessao.
+      responses:
+        '200':
+          description: Corpo de `/merger/api/whoami`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '501':
+          $ref: '#/components/responses/NaoImplementado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/raw:
+    post:
+      operationId: raw
+      tags: [passthrough]
+      summary: Passthrough autenticado para qualquer rota permitida
+      description: |
+        Allowlist: apenas caminhos que comecam com `/merger/api/`,
+        `/api/webhook/` ou `/api/mcp`. Operacoes destrutivas (DELETE ou
+        caminhos com delete/remover/reset/massa...) exigem `confirm: true`,
+        caso contrario a resposta e **409** `confirmacao_necessaria`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RawRequest'
+      responses:
+        '200':
+          description: Resposta do painel, incluindo status HTTP original.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RawResponse'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          $ref: '#/components/responses/ConflitoConfirmacao'
+        '429':
+          $ref: '#/components/responses/RateLimit'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas:
+    get:
+      operationId: listarRevendas
+      tags: [revendas]
+      summary: Lista as revendas visiveis para a franquia
+      description: Lista completa (`/merger/api/cliente/revendas`).
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/arvore:
+    get:
+      operationId: arvoreRevendas
+      tags: [revendas]
+      summary: Arvore hierarquica de revendas
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/renovar:
+    post:
+      operationId: renovarRevenda
+      tags: [revendas]
+      summary: Renova manualmente o painel de uma sub-revenda
+      description: |
+        O painel usa `POST /merger/api/cliente/revendas/renovar` com
+        `DisallowUnknownFields`: envie somente `id` e `vencimento_atual`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevendaRenovar'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/nota:
+    post:
+      operationId: notaRevenda
+      tags: [revendas]
+      summary: Grava contato/nota interna na revenda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevendaNota'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/unlimited:
+    post:
+      operationId: unlimitedRevenda
+      tags: [revendas]
+      summary: Promove/rebaixa uma revenda para ilimitado
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevendaUnlimited'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/usuarios:
+    get:
+      operationId: listarUsuarios
+      tags: [usuarios]
+      summary: Lista/busca clientes finais (linhas Sigma)
+      description: |
+        Filtros do painel: `search`, `dono`, `servidor`, `servidor_cat`,
+        `vence`, `vence_de`, `vence_ate`, `plano`, `status`, `page`,
+        `per_page`. A query e repassada sem alteracao.
+      parameters:
+        - $ref: '#/components/parameters/Busca'
+        - $ref: '#/components/parameters/Status'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+        - name: dono
+          in: query
+          description: Username da revenda, `meus` ou `todos`.
+          schema:
+            type: string
+        - name: plano
+          in: query
+          description: ID do plano ou `todos`.
+          schema:
+            type: string
+        - name: vence
+          in: query
+          description: hoje, amanha, DD/MM, DD/MM/YYYY ou YYYY-MM-DD.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/usuarios/criar:
+    post:
+      operationId: criarUsuario
+      tags: [usuarios]
+      summary: Cria uma linha/cliente final
+      description: |
+        O painel le estes campos da **query string**; o servidor converte o
+        corpo JSON em query automaticamente.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioCriar'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/usuarios/editar:
+    post:
+      operationId: editarUsuario
+      tags: [usuarios]
+      summary: Edita username, senha ou validade de um cliente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioEditar'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/usuarios/toggle:
+    post:
+      operationId: toggleUsuario
+      tags: [usuarios]
+      summary: Bloqueia/desbloqueia um cliente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioToggle'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/usuarios/renovar:
+    post:
+      operationId: renovarUsuario
+      tags: [usuarios]
+      summary: Renova o cliente com um plano
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioRenovar'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/usuarios/estender:
+    post:
+      operationId: estenderUsuario
+      tags: [usuarios]
+      summary: Estende o vencimento sem trocar o plano
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioEstender'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/usuarios/delete:
+    post:
+      operationId: removerUsuario
+      tags: [usuarios]
+      summary: Remove um cliente (exige confirmacao)
+      description: |
+        Operacao destrutiva: sem `"confirm": true` a resposta e **409**
+        `confirmacao_necessaria`. O painel espera `id` na query string; o
+        servidor converte o corpo JSON em query e remove `confirm`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioDelete'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '409':
+          $ref: '#/components/responses/ConflitoConfirmacao'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/planos:
+    get:
+      operationId: listarPlanos
+      tags: [planos]
+      summary: Planos visiveis para a franquia
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/creditos:
+    get:
+      operationId: saldoCreditos
+      tags: [planos]
+      summary: Saldo consolidado de creditos
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/pedidos:
+    get:
+      operationId: listarPedidos
+      tags: [pedidos]
+      summary: Lista pedidos de conteudo
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/pedidos/criar:
+    post:
+      operationId: criarPedido
+      tags: [pedidos]
+      summary: Cria pedido de filme/serie (consome 1 credito de pedido)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PedidoCriar'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/reportes:
+    get:
+      operationId: listarReportes
+      tags: [reportes]
+      summary: Lista reportes de canal/filme/serie
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/reportes/criar:
+    post:
+      operationId: criarReporte
+      tags: [reportes]
+      summary: Reporta um canal/filme/serie com problema
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReporteCriar'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/catalogo/pendencias:
+    get:
+      operationId: pendenciasCatalogo
+      tags: [catalogo]
+      summary: Pendencias de correcao do catalogo
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/catalogo/jogos:
+    get:
+      operationId: jogosDoDia
+      tags: [catalogo]
+      summary: Agenda esportiva (jogos do dia)
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/tickets:
+    get:
+      operationId: listarTickets
+      tags: [suporte]
+      summary: Lista tickets de suporte (rota de cliente ou admin conforme o papel)
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/tickets/criar:
+    post:
+      operationId: criarTicket
+      tags: [suporte]
+      summary: Abre um chamado de suporte
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketNovo'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/tickets/responder:
+    post:
+      operationId: responderTicket
+      tags: [suporte]
+      summary: Responde um chamado de suporte
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketResposta'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/upload:
+    post:
+      operationId: uploadMultipart
+      tags: [painel]
+      summary: Encaminha multipart/form-data para qualquer rota permitida
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path:
+                  type: string
+                  description: Rota do painel (allowlist do /v1/raw).
+                confirm:
+                  type: string
+                  description: 'Use 1/true/yes para liberar rota destrutiva.'
+                arquivo:
+                  type: string
+                  format: binary
+                  description: Qualquer parte com filename vira arquivo.
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '409':
+          $ref: '#/components/responses/ConflitoConfirmacao'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/avisos:
+    get:
+      operationId: listarAvisos
+      tags: [suporte]
+      summary: Avisos e notificacoes do painel
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/stats:
+    get:
+      operationId: estatisticas
+      tags: [painel]
+      summary: Estatisticas de catalogo do painel
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/dashboard:
+    get:
+      operationId: dashboardFinanceiro
+      tags: [painel]
+      summary: Dashboard financeiro
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Token local definido em ZENITH_API_TOKEN.
+  parameters:
+    Busca:
+      name: search
+      in: query
+      description: Busca textual (username, dono, notas e contatos).
+      schema:
+        type: string
+    Status:
+      name: status
+      in: query
+      description: Filtro de status aceito pela rota (em /v1/usuarios `ativo`, `teste`, `expirado`, `bloqueado` ou `todos`).
+      schema:
+        type: string
+  responses:
+    CorpoDoPainel:
+      description: Corpo JSON devolvido pelo painel dentro de `data`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Envelope'
+    RequisicaoInvalida:
+      description: JSON/query/caminho invalido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NaoAutorizado:
+      description: Token local ausente/invalido, ou sessao do painel expirada.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Proibido:
+      description: Origem nao-loopback em modo dev, ou permissao negada pelo painel.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NaoEncontrado:
+      description: Rota local inexistente (fallback) ou rota nao encontrada no painel.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ConflitoConfirmacao:
+      description: 'Operacao destrutiva sem `confirm: true`.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    DoisFatores:
+      description: O painel exige o codigo 2FA; repita o login com `codigo`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    RateLimit:
+      description: Painel limitou as tentativas; aguarde antes de repetir.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NaoImplementado:
+      description: Funcionalidade ainda nao implementada nesta build (use /v1/raw).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ErroPainel:
+      description: Painel respondeu 5xx ou ficou inacessivel.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ErroInterno:
+      description: Erro local inesperado.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    Envelope:
+      type: object
+      description: Envelope de sucesso.
+      required: [ok, data, meta]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        data:
+          description: Corpo devolvido pelo painel (ou objeto local).
+        meta:
+          type: object
+          required: [elapsed_ms]
+          properties:
+            elapsed_ms:
+              type: integer
+              minimum: 0
+              description: Tempo gasto pelo servidor local, em milissegundos.
+    ErrorEnvelope:
+      type: object
+      description: Envelope de erro.
+      required: [ok, error]
+      properties:
+        ok:
+          type: boolean
+          const: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: |
+                Codigos: nao_autorizado, acesso_negado, token_obrigatorio,
+                nao_autenticado, sessao_expirada, dois_fatores_necessario,
+                codigo_2fa_invalido, login_recusado, sem_permissao,
+                nao_encontrado, rota_nao_encontrada, confirmacao_necessaria,
+                rate_limit, caminho_nao_permitido, erro_painel, erro_rede,
+                nao_implementado, json_invalido, requisicao_invalida,
+                metodo_nao_permitido, configuracao_invalida, url_invalida.
+            message:
+              type: string
+    Meta:
+      type: object
+      required: [service, version, panel_origin, authenticated, session, auth]
+      properties:
+        service:
+          type: string
+          const: zenith4k-api
+        version:
+          type: string
+        panel_origin:
+          type: string
+          description: Origem do painel (sem caminho).
+        authenticated:
+          type: boolean
+        session:
+          type: object
+          properties:
+            authenticated:
+              type: boolean
+            username:
+              oneOf:
+                - type: string
+                - type: 'null'
+            role:
+              oneOf:
+                - type: string
+                - type: 'null'
+            logged_in_at:
+              oneOf:
+                - type: string
+                  format: date-time
+                - type: 'null'
+        auth:
+          type: object
+          properties:
+            token_required:
+              type: boolean
+            dev_mode:
+              type: boolean
+        started_at:
+          type: string
+          format: date-time
+    LoginRequest:
+      type: object
+      properties:
+        codigo:
+          type: string
+          description: Codigo 2FA recebido por e-mail (somente quando exigido).
+    LoginOutcome:
+      description: Resultado do login (campo discriminante `estado`).
+      oneOf:
+        - type: object
+          required: [estado, whoami]
+          properties:
+            estado:
+              type: string
+              const: ok
+            whoami:
+              description: Corpo de `/merger/api/whoami`.
+        - type: object
+          required: [estado]
+          properties:
+            estado:
+              type: string
+              const: two_factor_required
+            email_mascarado:
+              type: string
+        - type: object
+          required: [estado, erro, vencido]
+          properties:
+            estado:
+              type: string
+              const: rejected
+            erro:
+              type: string
+            vencido:
+              type: boolean
+    RawRequest:
+      type: object
+      required: [path]
+      properties:
+        method:
+          type: string
+          default: GET
+          enum: [GET, POST, PUT, PATCH, DELETE, HEAD]
+        path:
+          type: string
+          description: Caminho absoluto dentro da allowlist.
+          examples:
+            - /merger/api/cliente/revendas
+            - /merger/api/stats
+        query:
+          description: 'Objeto `{chave: valor}` ou lista de pares `[["chave","valor"]]`.'
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: array
+              items:
+                type: array
+                minItems: 2
+                maxItems: 2
+                items:
+                  type: string
+        body:
+          description: Corpo JSON enviado ao painel (qualquer valor).
+        confirm:
+          type: boolean
+          default: false
+          description: Obrigatorio `true` em operacoes destrutivas.
+    RawResponse:
+      type: object
+      required: [status, ok, body, text, content_type, elapsed_ms]
+      properties:
+        status:
+          type: integer
+          description: Status HTTP devolvido pelo painel.
+        ok:
+          type: boolean
+        body:
+          description: Corpo JSON quando a resposta e JSON; null caso contrario.
+        text:
+          type: string
+          description: Corpo textual bruto.
+        content_type:
+          oneOf:
+            - type: string
+            - type: 'null'
+        elapsed_ms:
+          type: integer
+          minimum: 0
+    RevendaRenovar:
+      type: object
+      required: [id, vencimento_atual]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+        vencimento_atual:
+          type: string
+          description: Data exibida na lista (YYYY-MM-DD); protege contra renovacao dupla.
+    RevendaNota:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+          description: Alternativa ao id.
+        contato_nome:
+          type: string
+        contato_email:
+          type: string
+        contato_telegram:
+          type: string
+        contato_whatsapp:
+          type: string
+        contato_observacoes:
+          type: string
+        vencimento:
+          type: string
+          description: YYYY-MM-DD (somente sub-revendas).
+    RevendaUnlimited:
+      type: object
+      required: [id, novo_estado]
+      properties:
+        id:
+          type: integer
+        novo_estado:
+          type: integer
+          enum: [0, 1]
+          description: 1 promove, 0 rebaixa.
+        saldo_rebaixamento:
+          type: integer
+          minimum: 0
+    UsuarioCriar:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        max_connections:
+          type: integer
+          minimum: 1
+          default: 1
+        dias:
+          type: integer
+          minimum: 0
+        is_trial:
+          type: integer
+          enum: [0, 1]
+        bouquet:
+          type: string
+          default: COMPLETO C/ ADULTOS
+        servidor_id:
+          type: integer
+    UsuarioEditar:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          type: integer
+        novo_username:
+          type: string
+        nova_senha:
+          type: string
+        validade:
+          type: string
+          description: YYYY-MM-DD.
+    UsuarioToggle:
+      type: object
+      required: [id, acao]
+      properties:
+        id:
+          type: integer
+        acao:
+          type: string
+          enum: [bloquear, desbloquear]
+    UsuarioRenovar:
+      type: object
+      required: [user_id, plano_id]
+      properties:
+        user_id:
+          type: integer
+        plano_id:
+          type: integer
+    UsuarioEstender:
+      type: object
+      required: [user_id, dias]
+      properties:
+        user_id:
+          type: integer
+        dias:
+          type: integer
+          minimum: 1
+          maximum: 3650
+    UsuarioDelete:
+      type: object
+      required: [id, confirm]
+      properties:
+        id:
+          type: integer
+        confirm:
+          type: boolean
+          const: true
+    PedidoCriar:
+      type: object
+      required: [tmdb_id, titulo]
+      properties:
+        tmdb_id:
+          type: integer
+        tipo:
+          type: string
+          enum: [movie, series]
+          default: movie
+        titulo:
+          type: string
+        poster_url:
+          type: string
+        audio:
+          type: string
+          enum: [dublado, legendado, ambos]
+          default: dublado
+        link_m3u:
+          type: string
+        episodios_selecionados:
+          type: array
+          items:
+            type: string
+    TicketNovo:
+      type: object
+      required: [assunto, texto]
+      properties:
+        assunto:
+          type: string
+          maxLength: 120
+        texto:
+          type: string
+          maxLength: 4000
+    TicketResposta:
+      type: object
+      required: [id, texto]
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        texto:
+          type: string
+          maxLength: 4000
+    ReporteCriar:
+      type: object
+      required: [stream_id_original, nome_conteudo, motivo]
+      properties:
+        fonte_id:
+          type: integer
+        stream_id_original:
+          type: string
+        tipo:
+          type: string
+          enum: [live, movie, series]
+          default: live
+        nome_conteudo:
+          type: string
+        motivo:
+          type: string
+          description: Precisa estar na lista aceita para o tipo.
+        episodios_afetados:
+          type: string

@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::config::ClientConfig;
 use crate::error::{ApiError, Result};
-use crate::raw::{RawRequest, RawResponse};
+use crate::raw::{RawRequest, RawResponse, RawUpload, UploadFile};
 
 /// Estado de autenticacao em memoria.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -75,10 +75,7 @@ impl MergerClient {
 
     /// Snapshot do estado de sessao.
     pub fn session(&self) -> SessionState {
-        self.state
-            .read()
-            .expect("session lock envenenado")
-            .clone()
+        self.state.read().expect("session lock envenenado").clone()
     }
 
     pub fn is_authenticated(&self) -> bool {
@@ -96,7 +93,10 @@ impl MergerClient {
             .get("username")
             .and_then(Value::as_str)
             .map(str::to_string);
-        st.role = whoami.get("role").and_then(Value::as_str).map(str::to_string);
+        st.role = whoami
+            .get("role")
+            .and_then(Value::as_str)
+            .map(str::to_string);
         st.last_whoami = Some(whoami);
     }
 
@@ -159,7 +159,9 @@ impl MergerClient {
             return Err(ApiError::ConfirmationRequired(normalized));
         }
 
-        let mut url = self.api_origin()?.join(normalized.trim_start_matches('/'))?;
+        let mut url = self
+            .api_origin()?
+            .join(normalized.trim_start_matches('/'))?;
         if !query.is_empty() {
             let mut qp = url.query_pairs_mut();
             for (k, v) in query {
@@ -168,15 +170,20 @@ impl MergerClient {
         }
 
         let started = Instant::now();
-        let mut req = self.http.request(method.clone(), url).header(
-            reqwest::header::ACCEPT,
-            "application/json, text/plain, */*",
-        );
+        let mut req = self
+            .http
+            .request(method.clone(), url)
+            .header(reqwest::header::ACCEPT, "application/json, text/plain, */*");
         if let Some(payload) = body {
             req = req.json(payload);
         }
 
         let resp = req.send().await?;
+        self.finish(resp, started).await
+    }
+
+    /// Normaliza a resposta (JSON/texto/erros) de qualquer transporte.
+    async fn finish(&self, resp: reqwest::Response, started: Instant) -> Result<RawResponse> {
         let status = resp.status();
         let content_type = resp
             .headers()
@@ -226,6 +233,55 @@ impl MergerClient {
         }
     }
 
+    /// Envia `multipart/form-data` (campos texto + arquivos) para o painel.
+    ///
+    /// Usado por rotas que nao aceitam JSON: anexo de ticket, banner, logo do
+    /// tema, importacao de CSV/M3U etc.
+    pub async fn send_multipart(
+        &self,
+        path: &str,
+        fields: &[(String, String)],
+        files: &[UploadFile],
+        confirm: bool,
+    ) -> Result<RawResponse> {
+        use reqwest::multipart::{Form, Part};
+
+        let normalized = Self::validate_path(path)?;
+        if Self::is_destructive("POST", &normalized) && !confirm {
+            return Err(ApiError::ConfirmationRequired(normalized));
+        }
+
+        let mut form = Form::new();
+        for (key, value) in fields {
+            form = form.text(key.clone(), value.clone());
+        }
+        for file in files {
+            let part = Part::bytes(file.bytes.clone())
+                .file_name(file.filename.clone())
+                .mime_str(&file.mime)?;
+            form = form.part(file.field.clone(), part);
+        }
+
+        let url = self
+            .api_origin()?
+            .join(normalized.trim_start_matches('/'))?;
+        let started = Instant::now();
+        let resp = self
+            .http
+            .post(url)
+            .header(reqwest::header::ACCEPT, "application/json, text/plain, */*")
+            .multipart(form)
+            .send()
+            .await?;
+        self.finish(resp, started).await
+    }
+
+    /// Passthrough multipart publico.
+    pub async fn raw_upload(&self, upload: RawUpload) -> Result<RawResponse> {
+        self.send_multipart(&upload.path, &upload.fields, &upload.files, upload.confirm)
+            .await
+    }
+
     /// Passthrough publico com allowlist + confirmacao.
     pub async fn raw(&self, req: RawRequest) -> Result<RawResponse> {
         self.send(
@@ -238,11 +294,7 @@ impl MergerClient {
         .await
     }
 
-    pub async fn raw_get(
-        &self,
-        path: &str,
-        query: &[(String, String)],
-    ) -> Result<RawResponse> {
+    pub async fn raw_get(&self, path: &str, query: &[(String, String)]) -> Result<RawResponse> {
         self.send("GET", path, query, None, false).await
     }
 

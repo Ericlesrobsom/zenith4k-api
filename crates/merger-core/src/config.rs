@@ -3,19 +3,14 @@ use url::Url;
 use crate::error::{ApiError, Result};
 
 /// Papel usado no login contra o painel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PanelRole {
     /// Franquia / revenda: `POST /merger/api/cliente_login`.
+    #[default]
     Franchise,
     /// Admin mestre ou equipe: `POST /merger/api/login`.
     Admin,
-}
-
-impl Default for PanelRole {
-    fn default() -> Self {
-        Self::Franchise
-    }
 }
 
 impl std::str::FromStr for PanelRole {
@@ -83,10 +78,10 @@ impl ClientConfig {
         let panel_url = std::env::var("ZENITH_URL")
             .or_else(|_| std::env::var("ZENITH_BASE_URL"))
             .map_err(|_| ApiError::Config("defina ZENITH_URL".into()))?;
-        let username =
-            std::env::var("ZENITH_USER").map_err(|_| ApiError::Config("defina ZENITH_USER".into()))?;
-        let password =
-            std::env::var("ZENITH_PASS").map_err(|_| ApiError::Config("defina ZENITH_PASS".into()))?;
+        let username = std::env::var("ZENITH_USER")
+            .map_err(|_| ApiError::Config("defina ZENITH_USER".into()))?;
+        let password = std::env::var("ZENITH_PASS")
+            .map_err(|_| ApiError::Config("defina ZENITH_PASS".into()))?;
 
         let mut cfg = Self::new(panel_url, username, password)?;
         if let Ok(f) = std::env::var("ZENITH_FRANQUIA") {

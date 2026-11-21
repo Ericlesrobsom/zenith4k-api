@@ -1,0 +1,480 @@
+[
+  {
+    "p": "/merger/api/cliente/revendas",
+    "status": 200,
+    "bytes": 41519,
+    "shape": [
+      "array",
+      {
+        "contato_email": "string",
+        "contato_nome": "string",
+        "contato_telegram": "string",
+        "contato_whatsapp": "string",
+        "contrato_convite": "boolean",
+        "created_at": "number",
+        "credits": "number",
+        "enabled": "number",
+        "id": "number",
+        "mensalista": "number",
+        "n_sigma": "number",
+        "pode_conectar_whatsapp": "number",
+        "pode_criar_ilimitado": "number",
+        "pode_criar_revenda": "number",
+        "ultima_renovacao_manual": "number",
+        "ultimo_login_em": "number",
+        "ultimo_login_ip": "string",
+        "unlimited": "number",
+        "username": "string",
+        "usuario_acesso": "string",
+        "vencimento_painel": "string"
+      }
+    ]
+  },
+  {
+    "p": "/merger/api/cliente/revendas/arvore",
+    "status": 200,
+    "bytes": 56775,
+    "shape": [
+      "array",
+      {
+        "contrato_convite": "boolean",
+        "id": "number",
+        "username": "string",
+        "usuario_acesso": "string",
+        "credits": "number",
+        "unlimited": "number",
+        "mensalista": "number",
+        "enabled": "number",
+        "created_at": "number",
+        "ultimo_login_em": "number",
+        "ultimo_login_ip": "string",
+        "n_sigma": "number",
+        "n_ativos": "number",
+        "n_testes": "number",
+        "contato_nome": "string",
+        "contato_whatsapp": "string",
+        "vencimento_painel": "string",
+        "ultima_renovacao_manual": "number",
+        "sub_revendas": "null"
+      }
+    ]
+  },
+  {
+    "p": "/merger/api/cliente/sigma_users?offset=0&limit=1",
+    "status": 200,
+    "bytes": 22933,
+    "shape": {
+      "contagens": {
+        "ativo": "number",
+        "bloqueado": "number",
+        "expirado": "number",
+        "teste": "number",
+        "todos": "number"
+      },
+      "data": [
+        "array",
+        {
+          "bouquet": "string",
+          "contato_email": "string",
+          "contato_nome": "string",
+          "contato_telegram": "string",
+          "contato_whatsapp": "string",
+          "created_at": "string",
+          "dono_display": "string",
+          "dono_painel_user": "string",
+          "dono_usuario_acesso": "string",
+          "enabled": "number",
+          "exp_date": "number",
+          "id": "number",
+          "is_trial": "number",
+          "link_hls": "string",
+          "link_m3u": "string",
+          "link_renovacao": "string",
+          "max_connections": "number",
+          "maxplayer_remoto_id": "number",
+          "maxplayer_user_id": "string",
+          "observacoes": "string",
+          "online_ip": "string",
+          "online_isp": "string",
+          "online_now": "boolean",
+          "online_ua": "string",
+          "orfa": "boolean",
+          "password": "string",
+          "plano_cor": "string",
+          "plano_nome": "string",
+          "pode_sincronizar_maxplayer": "boolean",
+          "remoto_id": "number",
+          "renovacao_qr": "boolean",
+          "servidor_catalogo_nome": "string",
+          "servidor_id": "number",
+          "servidor_nome": "string",
+          "status": "string",
+          "troca_visivel": "string",
+          "username": "string",
+          "validade": "string",
+          "valor_personalizado": "number"
+        }
+      ],
+      "page": "number",
+      "pages": "number",
+      "per_page": "number",
+      "total": "number"
+    }
+  },
+  {
+    "p": "/merger/api/cliente/sigma_users/revendas",
+    "status": 200,
+    "bytes": 16507,
+    "shape": [
+      "array",
+      {
+        "contato_nome": "string",
+        "parent_user": "string",
+        "username": "string",
+        "usuario_acesso": "string"
+      }
+    ]
+  },
+  {
+    "p": "/merger/api/cliente/planos",
+    "status": 200,
+    "bytes": 8748,
+    "shape": [
+      "array",
+      {
+        "ativo": "number",
+        "com_adultos": "number",
+        "cor_icone": "string",
+        "creditos_consumo": "number",
+        "creditos_padrao": "number",
+        "creditos_rede": "boolean",
+        "duracao_unidade": "string",
+        "duracao_valor": "number",
+        "herdado": "boolean",
+        "id": "number",
+        "max_telas": "number",
+        "nome": "string",
+        "oculto": "boolean",
+        "ordem": "number",
+        "package_id_remoto": "number",
+        "painel": "string",
+        "remoto_id": "number",
+        "tipo": "string",
+        "valor_reais": "number"
+      }
+    ]
+  },
+  {
+    "p": "/merger/api/cliente/creditos",
+    "status": 200,
+    "bytes": 41,
+    "shape": {
+      "credits": "number",
+      "ok": "boolean",
+      "unlimited": "boolean"
+    }
+  },
+  {
+    "p": "/merger/api/pedidos/listar?offset=0&limit=1",
+    "status": 200,
+    "bytes": 46,
+    "shape": {
+      "creditos_pedidos": "number",
+      "ok": "boolean",
+      "pedidos": [
+        "array",
+        null
+      ]
+    }
+  },
+  {
+    "p": "/merger/api/reportes/listar?offset=0&limit=1",
+    "status": 200,
+    "bytes": 364,
+    "shape": {
+      "ok": "boolean",
+      "reportes": [
+        "array",
+        {
+          "id": "number",
+          "username": "string",
+          "role": "string",
+          "fonte_id": "number",
+          "stream_id_original": "string",
+          "tipo": "string",
+          "nome_conteudo": "string",
+          "motivo": "string",
+          "episodios_afetados": "string",
+          "status": "string",
+          "admin_nota": "string",
+          "created_at": "string",
+          "resolved_at": "string"
+        }
+      ]
+    }
+  },
+  {
+    "p": "/merger/api/avisos",
+    "status": 200,
+    "bytes": 2251,
+    "shape": {
+      "avisos": [
+        "array",
+        {
+          "id": "number",
+          "title": "string",
+          "body": "string",
+          "url": "string",
+          "botoes": "array",
+          "autor_exibicao": "string",
+          "autor_role": "string",
+          "escopo": "string",
+          "created_at": "number",
+          "lido": "boolean"
+        }
+      ],
+      "nao_lidos": "number",
+      "visao": "string"
+    }
+  },
+  {
+    "p": "/merger/api/stats",
+    "status": 200,
+    "bytes": 374,
+    "shape": {
+      "canais": "number",
+      "filmes": "number",
+      "series": "number",
+      "bloqueados": "number",
+      "bloqueados_cat": "number",
+      "dup_filmes": "number",
+      "dup_series": "number",
+      "fontes": [
+        "array",
+        null
+      ],
+      "canais_online": "number",
+      "servidores": [
+        "array",
+        {
+          "id": "number",
+          "nome": "string",
+          "canais": "number",
+          "filmes": "number",
+          "series": "number"
+        }
+      ]
+    }
+  },
+  {
+    "p": "/merger/api/dashboard_financeiro",
+    "status": 200,
+    "bytes": 15986,
+    "shape": {
+      "clientes": {
+        "ativos": "number",
+        "bloqueados": "number",
+        "expirados": "number",
+        "testes": "number",
+        "total": "number"
+      },
+      "creditos_pedidos": "number",
+      "credits": "number",
+      "faturamento_mes": "number",
+      "is_admin": "boolean",
+      "janela_inicio": "number",
+      "janela_offset": "number",
+      "novos_mes": "number",
+      "planos_teste": [
+        "array",
+        {
+          "com_adultos": "number",
+          "cor_icone": "string",
+          "duracao_unidade": "string",
+          "duracao_valor": "number",
+          "id": "number",
+          "nome": "string",
+          "remoto_id": "number",
+          "servidor_nome": "string"
+        }
+      ],
+      "ranking_franquias": [
+        "array",
+        {
+          "ativos": "number",
+          "dono": "string",
+          "dono_display": "string",
+          "receita": "number",
+          "total": "number",
+          "usuario_acesso": "string"
+        }
+      ],
+      "rendimento_mensal": "number",
+      "serie_anterior": [
+        "array",
+        "number"
+      ],
+      "serie_ativos": [
+        "array",
+        "number"
+      ],
+      "serie_atual": [
+        "array",
+        "number"
+      ],
+      "serie_expirados": [
+        "array",
+        "number"
+      ],
+      "serie_testes": [
+        "array",
+        "number"
+      ],
+      "spark_clientes": [
+        "array",
+        "number"
+      ],
+      "spark_faturamento": [
+        "array",
+        "number"
+      ],
+      "top_planos": [
+        "array",
+        {
+          "nome": "string",
+          "receita": "number",
+          "total": "number"
+        }
+      ],
+      "unlimited": "boolean",
+      "vencendo": [
+        "array",
+        {
+          "dias_restantes": "number",
+          "dono": "string",
+          "exp_date": "number",
+          "plano_nome": "string",
+          "username": "string"
+        }
+      ]
+    }
+  },
+  {
+    "p": "/merger/api/categorias",
+    "status": 200,
+    "bytes": 9586,
+    "shape": [
+      "array",
+      {
+        "virtual_id": "string",
+        "nome": "string",
+        "ordem": "number",
+        "total": "number",
+        "bloqueada": "number",
+        "reservas_slots": [
+          "array",
+          null
+        ],
+        "reservas_canais": "number",
+        "manual": "number",
+        "adulto": "boolean"
+      }
+    ]
+  },
+  {
+    "p": "/merger/api/cliente/catalogo/pendencias?offset=0&limit=1",
+    "status": 200,
+    "bytes": 38,
+    "shape": {
+      "ok": "boolean",
+      "pendencias": [
+        "array",
+        null
+      ],
+      "total": "number"
+    }
+  },
+  {
+    "p": "/merger/api/cliente/agenda/jogos",
+    "status": 200,
+    "bytes": 423752,
+    "shape": [
+      "array",
+      {
+        "canais": [
+          "array",
+          {
+            "img_url": "string",
+            "nome": "string"
+          }
+        ],
+        "canal": "string",
+        "competicao": "string",
+        "competi├º├úo": "string",
+        "data_filtro": "string",
+        "data_jogo": "string",
+        "destaque": "boolean",
+        "horario": "string",
+        "img_canal_url": "string",
+        "img_competicao_url": "string",
+        "img_time1_url": "string",
+        "img_time2_url": "string",
+        "placar_time1": "string",
+        "placar_time2": "string",
+        "status": "string",
+        "time1": "string",
+        "time2": "string"
+      }
+    ]
+  },
+  {
+    "p": "/merger/api/cliente/notas",
+    "status": 200,
+    "bytes": 103,
+    "shape": {
+      "etiquetas": [
+        "array",
+        "string"
+      ],
+      "notas": [
+        "array",
+        null
+      ],
+      "ok": "boolean"
+    }
+  },
+  {
+    "p": "/merger/api/cliente/conta",
+    "status": 200,
+    "bytes": 132,
+    "shape": {
+      "ok": "boolean",
+      "usuario_acesso": "string",
+      "contato_nome": "string",
+      "contato_whatsapp": "string",
+      "contato_email": "string",
+      "contato_telegram": "string",
+      "sobre": "string"
+    }
+  },
+  {
+    "p": "/merger/api/tickets/listar",
+    "status": 200,
+    "bytes": 0,
+    "shape": ""
+  },
+  {
+    "p": "/merger/api/cliente/melhorias/listar?offset=0&limit=1",
+    "status": 200,
+    "bytes": 49,
+    "shape": {
+      "nao_lidos": "number",
+      "ok": "boolean",
+      "pedidos": [
+        "array",
+        null
+      ],
+      "total": "number"
+    }
+  }
+]

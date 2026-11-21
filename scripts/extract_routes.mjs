@@ -24,13 +24,21 @@ const files = fs
 
 const rows = [];
 for (const file of files) {
-  const lines = fs.readFileSync(path.join(repo, file), "utf8").split(/\r?\n/);
-  lines.forEach((line, i) => {
-    const m = line.match(/HandleFunc\(\s*"([^"]+)"\s*,\s*(.+)\)\s*$/);
-    if (m && m[1].startsWith("/")) {
-      rows.push({ path: m[1], expr: m[2].trim(), file, line: i + 1 });
-    }
-  });
+  const text = fs.readFileSync(path.join(repo, file), "utf8");
+  // Aceita registros de uma linha e registros quebrados em duas linhas
+  // (path na primeira, handler na segunda), como em routes_tickets.go.
+  const re = /HandleFunc\(\s*"([^"]+)"\s*,\s*([\s\S]*?)\)\s*\r?\n/g;
+  let m;
+  while ((m = re.exec(text))) {
+    if (!m[1].startsWith("/")) continue;
+    const line = text.slice(0, m.index).split(/\r?\n/).length;
+    rows.push({
+      path: m[1],
+      expr: m[2].trim().replace(/\s+/g, " "),
+      file,
+      line,
+    });
+  }
 }
 
 const seen = new Set();

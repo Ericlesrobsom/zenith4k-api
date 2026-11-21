@@ -22,8 +22,10 @@
 //! # async fn run() -> merger_core::Result<()> {
 //! let cfg = ClientConfig::from_env()?;
 //! let client = MergerClient::new(cfg)?;
-//! let who = client.login().await?;
-//! println!("logado como {:?}", who.whoami);
+//! let outcome = client.login().await?;
+//! println!("login: {:?}", outcome);
+//! let who = client.whoami().await?;
+//! println!("logado como {:?}", who);
 //! let stats = client.raw_get("/merger/api/stats", &[]).await?;
 //! println!("{}", stats.body);
 //! # Ok(())
