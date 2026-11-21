@@ -1,0 +1,7 @@
+target/
+.env
+.env.*
+!.env.example
+*.log
+.merger-session.json
+audit/
