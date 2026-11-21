@@ -167,6 +167,15 @@ foram mapeados para o status mais fiel ao significado, e o restante segue
 Fallbacks (`404 rota_nao_encontrada`, `405 metodo_nao_permitido`) e rejeicoes
 de JSON (`400 json_invalido`) usam o mesmo envelope de erro.
 
+## Passthrough x rotas tipadas
+
+Os unicos passthrough sao `/v1/raw` e `/v1/upload`. Toda rota tipada de escrita
+chama o metodo correspondente do `merger-core` (`typed_post!` ou handler
+proprio), que valida corpo/query e aplica as travas locais — `confirm` no
+delete de usuario, corpo exato em `revendas/renovar` e fallback de saldo no
+rebaixamento de revenda ilimitada. Isso evita o bug em que a rota HTTP pulava
+a logica do core e mandava o corpo cru ao painel.
+
 ## Erro de negocio e envelope
 
 O painel usa `200 {"ok":false,"erro":"..."}` para recusas legitimas. As rotas

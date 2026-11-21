@@ -160,6 +160,18 @@ Respostas uteis:
 - `401` `login_recusado`: credenciais invalidas ou painel vencido.
 - `429` `rate_limit`: o painel limita tentativas (10/min por IP).
 
+### Validacao nas rotas tipadas
+
+As rotas de escrita passam pelos builders do `merger-core` antes de chamar o
+painel. Consequencias praticas:
+
+- `/v1/revendas/renovar` exige `{id, vencimento_atual}` (string, pode ser vazia).
+- `/v1/revendas/unlimited` com `novo_estado: 0` e sem `saldo_rebaixamento`
+  reaplica o **saldo atual** da revenda; `0` explicito e perda intencional.
+- `/v1/usuarios/delete` exige `confirm: true` no corpo.
+- `/v1/usuarios/criar` e `/v1/usuarios/toggle` viram query string no painel e
+  recusam campos nao escalares com `400`.
+
 ### Erro de negocio do painel (409)
 
 As rotas **tipadas** convertem recusa de negocio do painel

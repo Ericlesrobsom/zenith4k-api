@@ -326,11 +326,19 @@ impl MergerClient {
         let rebaixando = body.get("novo_estado").and_then(Value::as_i64) == Some(0);
         if rebaixando && body.get("saldo_rebaixamento").is_none() {
             let id = body.get("id").and_then(Value::as_i64).unwrap_or(0);
-            let saldo = self.saldo_atual_revenda(id).await.map_err(|_| {
-                ApiError::Config(
-                    "informe saldo_rebaixamento: nao consegui ler o saldo atual da revenda".into(),
-                )
-            })?;
+            let saldo = match self.saldo_atual_revenda(id).await {
+                Ok(saldo) => saldo,
+                // Sem sessao: deixa o chamador (servidor/CLI) fazer o login.
+                Err(err @ (ApiError::SessionExpired | ApiError::NotAuthenticated)) => {
+                    return Err(err)
+                }
+                Err(_) => {
+                    return Err(ApiError::Config(
+                        "informe saldo_rebaixamento: nao consegui ler o saldo atual da revenda"
+                            .into(),
+                    ))
+                }
+            };
             body["saldo_rebaixamento"] = json!(saldo);
         }
         self.send(

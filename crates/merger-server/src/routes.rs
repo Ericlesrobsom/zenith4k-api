@@ -302,49 +302,18 @@ async fn get_panel(st: &AppState, path: &str, query: Option<String>) -> Result<V
     Ok(response.json_or_text())
 }
 
-async fn post_panel(st: &AppState, path: &str, body: Value) -> Result<Value, AppError> {
-    let (body, confirm) = strip_confirm(body);
-    let mut req = RawRequest::post(path, body);
-    req.confirm = confirm;
-    let response = st.call(req).await?;
-    Ok(response.json_or_text())
-}
-
-/// POST em que o painel le os campos pela **query string** (ex.:
-/// `sigma_users/criar`, `toggle`, `delete`), e nao pelo corpo JSON.
-async fn post_panel_query(st: &AppState, path: &str, body: Value) -> Result<Value, AppError> {
-    let (body, confirm) = strip_confirm(body);
-    let mut req = RawRequest::new("POST", path);
-    req.query = body_to_query(&body)?;
-    req.confirm = confirm;
-    let response = st.call(req).await?;
-    Ok(response.json_or_text())
-}
-
-/// Converte um corpo JSON plano em pares de query (`{"id": 7}` -> `id=7`).
-fn body_to_query(body: &Value) -> Result<Vec<(String, String)>, AppError> {
-    let Value::Object(map) = body else {
-        return Err(AppError::bad_request(
-            "corpo precisa ser um objeto JSON com campos escalares",
-        ));
-    };
-    let mut pairs = Vec::with_capacity(map.len());
-    for (key, value) in map {
-        push_pair(&mut pairs, key.clone(), value.clone())?;
-    }
-    Ok(pairs)
-}
-
-/// Remove `confirm` do corpo antes de enviar ao painel.
-fn strip_confirm(body: Value) -> (Value, bool) {
-    match body {
-        Value::Object(mut map) => {
-            let confirm = map.get("confirm").and_then(Value::as_bool).unwrap_or(false);
-            map.remove("confirm");
-            (Value::Object(map), confirm)
+/// Rotas cujos campos viram query exigem um objeto plano de escalares.
+fn validar_campos_escalares(body: &Value) -> Result<(), AppError> {
+    if let Some(map) = body.as_object() {
+        for (chave, valor) in map {
+            if matches!(valor, Value::Array(_) | Value::Object(_)) {
+                return Err(AppError::bad_request(format!(
+                    "campo {chave} precisa ser escalar"
+                )));
+            }
         }
-        outro => (outro, false),
     }
+    Ok(())
 }
 
 fn parse_raw_query(raw: Option<String>) -> Result<Vec<(String, String)>, AppError> {
@@ -637,93 +606,106 @@ fixed_route!(dashboard, "/merger/api/dashboard_financeiro");
 // Endpoints tipados (POST)
 // ---------------------------------------------------------------------------
 
-/// POST com corpo JSON livre. `confirm` e retirado do corpo e usado na trava
-/// local de operacoes destrutivas.
-macro_rules! post_route {
-    ($name:ident, $path:literal, $doc:literal) => {
+/// POST tipado: valida no core, faz login sob demanda e traduz erro de negocio.
+///
+/// Diferente do passthrough, aqui a logica do `merger-core` (builders de
+/// corpo/query e travas locais) **sempre** roda. Era o furo do P3: a macro
+/// antiga chamava `raw` e pulava, por exemplo, o fallback de saldo no
+/// rebaixamento de revenda ilimitada.
+macro_rules! typed_post {
+    ($name:ident, $doc:literal, $metodo:ident) => {
         #[doc = $doc]
         pub async fn $name(
             State(st): State<AppState>,
             ApiJson(body): ApiJson<Value>,
         ) -> Result<Json<Value>, AppError> {
             let started = Instant::now();
-            let data = post_panel(&st, $path, body).await?;
+            let data = login_retry!(st, st.client.$metodo(body.clone())).map_err(AppError::from)?;
             let data = checar_erro_negocio(data)?;
             Ok(success(started, data))
         }
     };
 }
 
-/// POST cujos campos o painel espera na query string.
-macro_rules! post_query_route {
-    ($name:ident, $path:literal, $doc:literal) => {
-        #[doc = $doc]
-        pub async fn $name(
-            State(st): State<AppState>,
-            ApiJson(body): ApiJson<Value>,
-        ) -> Result<Json<Value>, AppError> {
-            let started = Instant::now();
-            let data = post_panel_query(&st, $path, body).await?;
-            let data = checar_erro_negocio(data)?;
-            Ok(success(started, data))
-        }
-    };
-}
-
-post_route!(
+typed_post!(
     revendas_renovar,
-    "/merger/api/cliente/revendas/renovar",
-    "Renova uma sub-revenda."
+    "Renova uma sub-revenda. Corpo `{id, vencimento_atual}`.",
+    revendas_renovar
 );
-post_route!(
+typed_post!(
     revendas_nota,
-    "/merger/api/cliente/revendas/nota",
-    "Grava uma nota interna na revenda."
+    "Grava nota/contato/vencimento na revenda.",
+    revendas_nota
 );
-post_route!(
+typed_post!(
     revendas_unlimited,
-    "/merger/api/cliente/revenda_unlimited",
-    "Liga/desliga o modo ilimitado de uma revenda."
+    "Liga/desliga o modo ilimitado (rebaixar sem saldo reaplica o saldo atual).",
+    revenda_unlimited
 );
-post_query_route!(
-    usuarios_criar,
-    "/merger/api/cliente/sigma_users/criar",
-    "Cria uma linha/cliente final. Campos na query do painel: username, password, max_connections, dias, is_trial, bouquet, servidor_id."
-);
-post_route!(
+/// Cria uma linha/cliente final. Campos viram **query string** no painel.
+pub async fn usuarios_criar(
+    State(st): State<AppState>,
+    ApiJson(body): ApiJson<Value>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    validar_campos_escalares(&body)?;
+    let data = login_retry!(st, st.client.usuarios_criar(body.clone())).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+typed_post!(
     usuarios_editar,
-    "/merger/api/cliente/sigma_users/editar",
-    "Edita dados de um cliente."
+    "Edita dados de um cliente.",
+    usuarios_editar
 );
-post_query_route!(
-    usuarios_toggle,
-    "/merger/api/cliente/sigma_users/toggle",
-    "Liga/desliga o cliente. Corpo {\"id\": 7, \"acao\": \"bloquear\"|\"desbloquear\"}."
-);
-post_route!(
+/// Liga/desliga o cliente. Corpo `{id, acao}`; campos viram query.
+pub async fn usuarios_toggle(
+    State(st): State<AppState>,
+    ApiJson(body): ApiJson<Value>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    validar_campos_escalares(&body)?;
+    let data = login_retry!(st, st.client.usuarios_toggle(body.clone())).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+typed_post!(
     usuarios_renovar,
-    "/merger/api/cliente/sigma_users/renovar",
-    "Renova o cliente com um plano."
+    "Renova o cliente com um plano.",
+    usuarios_renovar
 );
-post_route!(
+typed_post!(
     usuarios_estender,
-    "/merger/api/cliente/sigma_users/estender",
-    "Estende o vencimento sem trocar o plano."
+    "Estende o vencimento sem trocar o plano.",
+    usuarios_estender
 );
-post_query_route!(
-    usuarios_delete,
-    "/merger/api/cliente/sigma_users/delete",
-    "Remove um cliente. Corpo {\"id\": 7, \"confirm\": true}."
-);
-post_route!(
+
+/// Remove um cliente. Corpo `{id, confirm: true}`.
+pub async fn usuarios_delete(
+    State(st): State<AppState>,
+    ApiJson(body): ApiJson<Value>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    validar_campos_escalares(&body)?;
+    let confirm = body
+        .get("confirm")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let data = login_retry!(st, st.client.usuarios_delete(body.clone(), confirm))
+        .map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
+typed_post!(
     pedidos_criar,
-    "/merger/api/pedidos/criar",
-    "Cria um pedido de conteudo."
+    "Cria um pedido de conteudo (valida tipo/tmdb/audio no core).",
+    pedidos_criar
 );
-post_route!(
+typed_post!(
     reportes_criar,
-    "/merger/api/reportes/criar",
-    "Reporta um canal/filme com problema."
+    "Reporta um canal/filme com problema (whitelist de motivos no core).",
+    reportes_criar
 );
 
 // ---------------------------------------------------------------------------

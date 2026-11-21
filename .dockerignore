@@ -1,0 +1,13 @@
+target
+.git
+.gitignore
+.github
+.env
+.env.*
+!.env.example
+audit
+*.log
+docs/briefs
+scripts
+Dockerfile
+.dockerignore
