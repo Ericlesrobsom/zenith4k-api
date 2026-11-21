@@ -24,6 +24,9 @@ struct AuditEntry<'a> {
     path: &'a str,
     status: u16,
     elapsed_ms: u64,
+    /// Caminho real chamado pelo `/v1/raw` (sem query/corpo).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    panel_path: Option<&'a str>,
 }
 
 /// Middleware global: mede a request e grava a linha de auditoria.
@@ -33,20 +36,44 @@ pub async fn middleware(State(st): State<AppState>, req: Request, next: Next) ->
     let started = Instant::now();
     let method = req.method().to_string();
     let path = req.uri().path().to_string();
-    let response = next.run(req).await;
+    let mut response = next.run(req).await;
+    let panel_path = response
+        .headers()
+        .get("x-audit-panel-path")
+        .and_then(|valor| valor.to_str().ok())
+        .map(str::to_string);
+    if panel_path.is_some() {
+        response.headers_mut().remove("x-audit-panel-path");
+    }
     let status = response.status().as_u16();
     let elapsed_ms = started.elapsed().as_millis() as u64;
-    record(&st.audit_dir, &method, &path, status, elapsed_ms).await;
+    record(
+        &st.audit_dir,
+        &method,
+        &path,
+        status,
+        elapsed_ms,
+        panel_path.as_deref(),
+    )
+    .await;
     response
 }
 
-async fn record(dir: &Path, method: &str, path: &str, status: u16, elapsed_ms: u64) {
+async fn record(
+    dir: &Path,
+    method: &str,
+    path: &str,
+    status: u16,
+    elapsed_ms: u64,
+    panel_path: Option<&str>,
+) {
     let entry = AuditEntry {
         ts: Utc::now().to_rfc3339(),
         method,
         path,
         status,
         elapsed_ms,
+        panel_path,
     };
     let Ok(line) = serde_json::to_string(&entry) else {
         return;

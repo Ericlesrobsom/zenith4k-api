@@ -80,6 +80,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/tickets", get(routes::tickets))
         .route("/v1/tickets/criar", post(routes::tickets_criar))
         .route("/v1/tickets/responder", post(routes::tickets_responder))
+        .route("/v1/tickets/fechar", post(routes::tickets_fechar))
         .route("/v1/upload", post(routes::upload))
         .route("/v1/avisos", get(routes::avisos))
         .route("/v1/stats", get(routes::stats))
@@ -92,7 +93,8 @@ pub fn app(state: AppState) -> Router {
 
     Router::new()
         .route("/health", get(routes::health))
-        .route("/openapi.json", get(routes::openapi))
+        .route("/openapi.json", get(routes::openapi_json))
+        .route("/openapi.yaml", get(routes::openapi_yaml))
         .merge(protected)
         .fallback(routes::not_found)
         .method_not_allowed_fallback(routes::method_not_allowed)

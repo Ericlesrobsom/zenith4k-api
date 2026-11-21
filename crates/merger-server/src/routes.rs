@@ -4,6 +4,8 @@
 //! `MergerClient::raw` (via [`AppState::call`]), com login sob demanda. Assim o
 //! servidor nao depende dos atalhos tipados de `merger-core` estarem prontos.
 
+use std::collections::HashSet;
+use std::sync::OnceLock;
 use std::time::Instant;
 
 use axum::body::Bytes;
@@ -23,14 +25,83 @@ use crate::extract::ApiJson;
 use crate::state::AppState;
 
 const OPENAPI_YAML: &str = include_str!("../../../docs/openapi.yaml");
+const OPENAPI_JSON: &str = include_str!("../../../docs/openapi.json");
 const SERVICE: &str = "zenith4k-api";
 
 /// Rotas aceitas no passthrough (/v1/raw).
 const RAW_METHODS: [&str; 6] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
 
+/// Catalogo de rotas do painel (gerado por `scripts/extract_paths.mjs`).
+const PANEL_PATHS_TXT: &str = include_str!("panel_paths.txt");
+static PANEL_PATHS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+
+fn painel_tem_rota(caminho: &str) -> bool {
+    let rotas = PANEL_PATHS.get_or_init(|| {
+        PANEL_PATHS_TXT
+            .lines()
+            .map(str::trim)
+            .filter(|linha| !linha.is_empty())
+            .collect()
+    });
+    rotas.contains(caminho)
+}
+
+/// Destino de upload aceito: rota do catalogo ou liberada por
+/// `ZENITH_UPLOAD_PATHS` (lista separada por virgula).
+fn upload_destino_permitido(caminho: &str) -> bool {
+    if painel_tem_rota(caminho) {
+        return true;
+    }
+    match std::env::var("ZENITH_UPLOAD_PATHS") {
+        Ok(extra) => extra
+            .split(',')
+            .map(str::trim)
+            .filter(|rota| !rota.is_empty())
+            .any(|rota| rota == caminho),
+        Err(_) => false,
+    }
+}
+
+/// Converte recusa de negocio do painel (`ok:false` ou `erro`) em HTTP 409.
+///
+/// O painel responde `200 {"ok":false,"erro":"..."}` para recusas legitimas
+/// (saldo insuficiente, duplicidade, trial, permissao). Sem isso, o envelope
+/// da API diria `ok:true` e a automacao acharia que funcionou.
+///
+/// Nao e aplicado em `/v1/raw`: ali o chamador quer o corpo cru do painel.
+fn checar_erro_negocio(data: Value) -> Result<Value, AppError> {
+    let ok = data.get("ok").and_then(Value::as_bool);
+    let tem_erro = data.get("erro").is_some_and(|valor| !valor.is_null());
+    if ok != Some(false) && !(ok.is_none() && tem_erro) {
+        return Ok(data);
+    }
+    let mensagem = data
+        .get("erro")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|mensagem| !mensagem.is_empty())
+        .or_else(|| data.get("msg").and_then(Value::as_str).map(str::trim))
+        .unwrap_or("o painel recusou a operacao")
+        .to_string();
+    Err(AppError::new(StatusCode::CONFLICT, "erro_negocio_painel", mensagem).with_details(data))
+}
+
 // ---------------------------------------------------------------------------
 // Infraestrutura
 // ---------------------------------------------------------------------------
+
+/// Repete a chamada uma vez depois do login quando o painel responde 401.
+macro_rules! login_retry {
+    ($st:expr, $expr:expr) => {{
+        match $expr.await {
+            Err(ApiError::SessionExpired) | Err(ApiError::NotAuthenticated) => {
+                $st.ensure_login().await?;
+                $expr.await
+            }
+            outro => outro,
+        }
+    }};
+}
 
 /// `GET /health` — publico, nao toca no painel.
 pub async fn health(State(st): State<AppState>) -> Json<Value> {
@@ -46,8 +117,17 @@ pub async fn health(State(st): State<AppState>) -> Json<Value> {
     )
 }
 
-/// `GET /openapi.json` — serve `docs/openapi.yaml` embutido no binario.
-pub async fn openapi() -> Response {
+/// `GET /openapi.json` - JSON real (gerado de `docs/openapi.yaml`).
+pub async fn openapi_json() -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+        OPENAPI_JSON,
+    )
+        .into_response()
+}
+
+/// `GET /openapi.yaml` - fonte YAML embutida no binario.
+pub async fn openapi_yaml() -> Response {
     (
         [(header::CONTENT_TYPE, "application/yaml; charset=utf-8")],
         OPENAPI_YAML,
@@ -169,7 +249,7 @@ fn default_method() -> String {
 pub async fn raw(
     State(st): State<AppState>,
     ApiJson(input): ApiJson<RawIn>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Response, AppError> {
     let started = Instant::now();
     let method = input.method.trim().to_ascii_uppercase();
     if !RAW_METHODS.contains(&method.as_str()) {
@@ -184,11 +264,25 @@ pub async fn raw(
         body: input.body,
         confirm: input.confirm,
     };
+    let panel_path = req.path.clone();
     let response = st.call(req).await?;
-    Ok(success(
+    let mut resposta = success(
         started,
         serde_json::to_value(response).unwrap_or(Value::Null),
-    ))
+    )
+    .into_response();
+    // Header interno: a auditoria registra o caminho real do painel e remove
+    // o header antes de devolver ao cliente.
+    if let Ok(valor) = header_value(&panel_path) {
+        resposta.headers_mut().insert("x-audit-panel-path", valor);
+    }
+    Ok(resposta)
+}
+
+fn header_value(
+    valor: &str,
+) -> Result<axum::http::HeaderValue, axum::http::header::InvalidHeaderValue> {
+    axum::http::HeaderValue::from_str(valor)
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -371,6 +465,7 @@ macro_rules! list_route {
         ) -> Result<Json<Value>, AppError> {
             let started = Instant::now();
             let data = get_panel(&st, $path, query).await?;
+            let data = checar_erro_negocio(data)?;
             Ok(success(started, data))
         }
     };
@@ -382,6 +477,7 @@ macro_rules! fixed_route {
         pub async fn $name(State(st): State<AppState>) -> Result<Json<Value>, AppError> {
             let started = Instant::now();
             let data = get_panel(&st, $path, None).await?;
+            let data = checar_erro_negocio(data)?;
             Ok(success(started, data))
         }
     };
@@ -423,6 +519,7 @@ pub async fn revendas_criar(
         outro => outro,
     }
     .map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -440,6 +537,7 @@ pub async fn revendas_editar(
         outro => outro,
     }
     .map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -471,6 +569,7 @@ pub async fn revendas_toggle(
         outro => outro,
     }
     .map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -496,6 +595,7 @@ pub async fn revendas_remover(
         outro => outro,
     }
     .map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -524,6 +624,7 @@ pub async fn tickets(
         merger_core::PanelRole::Franchise => "/merger/api/cliente/tickets/listar",
     };
     let data = get_panel(&st, path, query).await?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -547,6 +648,7 @@ macro_rules! post_route {
         ) -> Result<Json<Value>, AppError> {
             let started = Instant::now();
             let data = post_panel(&st, $path, body).await?;
+            let data = checar_erro_negocio(data)?;
             Ok(success(started, data))
         }
     };
@@ -562,6 +664,7 @@ macro_rules! post_query_route {
         ) -> Result<Json<Value>, AppError> {
             let started = Instant::now();
             let data = post_panel_query(&st, $path, body).await?;
+            let data = checar_erro_negocio(data)?;
             Ok(success(started, data))
         }
     };
@@ -645,10 +748,40 @@ pub async fn tickets_criar(
         other => other,
     }
     .map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
-/// `POST /v1/tickets/responder` — responde um chamado. Corpo `{id, texto}`.
+/// Query de `POST /v1/tickets/fechar`.
+#[derive(Debug, Deserialize)]
+pub struct FecharTicketQuery {
+    pub id: Option<i64>,
+}
+
+/// `POST /v1/tickets/fechar?id=N` - fecha o proprio chamado.
+///
+/// O painel exige `id` na **query**; mandar no corpo devolve `sem_acesso`.
+pub async fn tickets_fechar(
+    State(st): State<AppState>,
+    RawQuery(query): RawQuery,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let id = query
+        .as_deref()
+        .and_then(|raw| {
+            url::form_urlencoded::parse(raw.as_bytes())
+                .find(|(chave, _)| chave == "id")
+                .and_then(|(_, valor)| valor.trim().parse::<i64>().ok())
+        })
+        .filter(|id| *id > 0)
+        .ok_or_else(|| AppError::bad_request("query id obrigatoria (inteiro positivo)"))?;
+
+    let data = login_retry!(st, st.client.tickets_fechar(id)).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
+/// `POST /v1/tickets/responder` - responde um chamado. Corpo `{id, texto}`.
 pub async fn tickets_responder(
     State(st): State<AppState>,
     ApiJson(body): ApiJson<Value>,
@@ -663,6 +796,7 @@ pub async fn tickets_responder(
         other => other,
     }
     .map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -735,33 +869,46 @@ pub async fn upload(
         .filter(|p| !p.is_empty())
         .ok_or_else(|| AppError::bad_request("campo multipart path e obrigatorio"))?;
 
+    if !upload_destino_permitido(&path) {
+        return Err(AppError::new(
+            StatusCode::BAD_REQUEST,
+            "destino_upload_invalido",
+            format!(
+                "{path} nao existe no catalogo de rotas do painel; \
+                 se for uma rota nova, libere em ZENITH_UPLOAD_PATHS"
+            ),
+        ));
+    }
+
     let resposta = st
         .call_upload(RawUpload {
-            path,
+            path: path.clone(),
             fields,
             files,
             confirm,
         })
         .await?;
+
+    // O catch-all do painel responde 200 vazio para rota inexistente. Sem esta
+    // checagem, o upload "funcionaria" sem fazer nada.
+    if resposta.ok && resposta.text.trim().is_empty() {
+        return Err(AppError::new(
+            StatusCode::BAD_GATEWAY,
+            "erro_painel_resposta_vazia",
+            format!(
+                "o painel respondeu {} com corpo vazio para {path}; \
+                 a rota pode nao existir ou nao aceitar upload",
+                resposta.status
+            ),
+        ));
+    }
+
     Ok(success(started, resposta.json_or_text()))
 }
 
 // ---------------------------------------------------------------------------
 // Revendas: transferencia e convite/adesao
 // ---------------------------------------------------------------------------
-
-/// Repete a chamada uma vez depois do login quando o painel responde 401.
-macro_rules! login_retry {
-    ($st:expr, $expr:expr) => {{
-        match $expr.await {
-            Err(ApiError::SessionExpired) | Err(ApiError::NotAuthenticated) => {
-                $st.ensure_login().await?;
-                $expr.await
-            }
-            outro => outro,
-        }
-    }};
-}
 
 /// Query de `GET /v1/revendas/transferir/destinos`.
 #[derive(Debug, Deserialize)]
@@ -787,6 +934,7 @@ pub async fn revendas_transferir_destinos(
 
     let data =
         login_retry!(st, st.client.transfer_revenda_destinos(&origem)).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -798,6 +946,7 @@ pub async fn revendas_transferir(
     let started = Instant::now();
     let data =
         login_retry!(st, st.client.transfer_revenda(body.clone())).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -805,6 +954,7 @@ pub async fn revendas_transferir(
 pub async fn revendas_convite(State(st): State<AppState>) -> Result<Json<Value>, AppError> {
     let started = Instant::now();
     let data = login_retry!(st, st.client.convite()).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -814,6 +964,7 @@ pub async fn revendas_convite_regenerar(
 ) -> Result<Json<Value>, AppError> {
     let started = Instant::now();
     let data = login_retry!(st, st.client.convite_regenerar()).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -823,6 +974,7 @@ pub async fn revendas_convite_adesao_pendentes(
 ) -> Result<Json<Value>, AppError> {
     let started = Instant::now();
     let data = login_retry!(st, st.client.convite_adesao_pendentes()).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -842,6 +994,7 @@ pub async fn revendas_convite_adesao_confirmar(
 
     let data =
         login_retry!(st, st.client.convite_adesao_confirmar(&pedido_id)).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -849,6 +1002,7 @@ pub async fn revendas_convite_adesao_confirmar(
 pub async fn revendas_convite_config(State(st): State<AppState>) -> Result<Json<Value>, AppError> {
     let started = Instant::now();
     let data = login_retry!(st, st.client.convite_mensalista_config()).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -860,6 +1014,7 @@ pub async fn revendas_convite_config_salvar(
     let started = Instant::now();
     let data = login_retry!(st, st.client.convite_mensalista_config_salvar(body.clone()))
         .map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
     Ok(success(started, data))
 }
 
@@ -883,4 +1038,30 @@ pub async fn method_not_allowed() -> AppError {
         "metodo_nao_permitido",
         "metodo HTTP nao permitido para esta rota",
     )
+}
+
+#[cfg(test)]
+mod testes {
+    use super::checar_erro_negocio;
+    use serde_json::json;
+
+    #[test]
+    fn recusa_de_negocio_vira_409_com_corpo_do_painel() {
+        let erro = checar_erro_negocio(json!({
+            "ok": false,
+            "erro": "Sem creditos de pedido disponiveis"
+        }))
+        .expect_err("deve virar erro");
+        assert_eq!(erro.status, axum::http::StatusCode::CONFLICT);
+        assert_eq!(erro.code, "erro_negocio_painel");
+        assert_eq!(erro.message, "Sem creditos de pedido disponiveis");
+        assert!(erro.details.is_some());
+    }
+
+    #[test]
+    fn sucesso_passa_intacto() {
+        let corpo = json!({"ok": true, "id": 7});
+        let saida = checar_erro_negocio(corpo.clone()).expect("sucesso");
+        assert_eq!(saida, corpo);
+    }
 }

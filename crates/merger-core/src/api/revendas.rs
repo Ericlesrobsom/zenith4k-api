@@ -316,8 +316,23 @@ impl MergerClient {
     ///
     /// `body` aceita `{id, novo_estado, saldo_rebaixamento?}`; `novo_estado`
     /// deve ser `1` (promover) ou `0` (rebaixar).
+    ///
+    /// **Rebaixamento sem `saldo_rebaixamento`:** o painel aplicaria `0` e
+    /// zeraria os creditos da revenda silenciosamente. Aqui o saldo atual da
+    /// revenda e lido e reaplicado, a menos que o chamador informe um valor
+    /// explicito (inclusive `0`, que passa a ser perda intencional).
     pub async fn revenda_unlimited(&self, body: Value) -> Result<Value> {
-        let body = build_revenda_unlimited_body(&body)?;
+        let mut body = build_revenda_unlimited_body(&body)?;
+        let rebaixando = body.get("novo_estado").and_then(Value::as_i64) == Some(0);
+        if rebaixando && body.get("saldo_rebaixamento").is_none() {
+            let id = body.get("id").and_then(Value::as_i64).unwrap_or(0);
+            let saldo = self.saldo_atual_revenda(id).await.map_err(|_| {
+                ApiError::Config(
+                    "informe saldo_rebaixamento: nao consegui ler o saldo atual da revenda".into(),
+                )
+            })?;
+            body["saldo_rebaixamento"] = json!(saldo);
+        }
         self.send(
             "POST",
             "/merger/api/cliente/revenda_unlimited",
@@ -327,6 +342,24 @@ impl MergerClient {
         )
         .await
         .map(|resp| resp.json_or_text())
+    }
+
+    /// Le o saldo atual (`credits`) de uma revenda na listagem da franquia.
+    async fn saldo_atual_revenda(&self, id: i64) -> Result<i64> {
+        let lista = self.revendas_list(&[]).await?;
+        if let Some(itens) = lista.as_array() {
+            for item in itens {
+                if item.get("id").and_then(Value::as_i64) == Some(id) {
+                    return item
+                        .get("credits")
+                        .and_then(Value::as_i64)
+                        .ok_or_else(|| ApiError::Config("revenda sem saldo legivel".into()));
+                }
+            }
+        }
+        Err(ApiError::Config(
+            "revenda nao encontrada na listagem".into(),
+        ))
     }
 
     /// Destinos possiveis para transferir uma revenda.
@@ -578,13 +611,28 @@ pub fn build_revenda_unlimited_body(body: &Value) -> Result<Value> {
             "novo_estado deve ser 0 (rebaixar) ou 1 (promover)".into(),
         ));
     }
-    let saldo = inteiro_opcional(obj, "saldo_rebaixamento")?.unwrap_or(0);
+    let saldo = inteiro_opcional(obj, "saldo_rebaixamento")?;
+    if let Some(valor) = saldo {
+        if valor < 0 {
+            return Err(ApiError::Config(
+                "saldo_rebaixamento nao pode ser negativo".into(),
+            ));
+        }
+    }
 
-    Ok(json!({
-        "id": id,
-        "novo_estado": novo_estado,
-        "saldo_rebaixamento": saldo,
-    }))
+    let mut saida = json!({ "id": id, "novo_estado": novo_estado });
+    match saldo {
+        // Rebaixar sem saldo explicito: o metodo busca o saldo atual antes de
+        // enviar (evita zerar a revenda por omissao).
+        None if novo_estado == 1 => {
+            saida["saldo_rebaixamento"] = json!(0);
+        }
+        None => {}
+        Some(valor) => {
+            saida["saldo_rebaixamento"] = json!(valor);
+        }
+    }
+    Ok(saida)
 }
 
 /// Corpo de `POST /transfer_revenda`.

@@ -205,10 +205,38 @@ async fn rota_protegida_sem_token_devolve_401() {
 }
 
 #[tokio::test]
-async fn openapi_servido_a_partir_do_yaml() {
+async fn openapi_json_e_json_de_verdade() {
     let dir = temp_dir();
     let response = app(state(Some("segredo"), &dir))
         .oneshot(get("/openapi.json", None))
+        .await
+        .expect("resposta do servidor");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        content_type.contains("application/json"),
+        "content-type: {content_type}"
+    );
+
+    let bytes = to_bytes(response.into_body(), 4 * 1024 * 1024)
+        .await
+        .expect("corpo do openapi");
+    let doc: Value = serde_json::from_slice(&bytes).expect("JSON valido");
+    assert_eq!(doc["openapi"], "3.1.0");
+    assert!(doc["paths"]["/v1/raw"].is_object());
+}
+
+#[tokio::test]
+async fn openapi_yaml_continua_disponivel() {
+    let dir = temp_dir();
+    let response = app(state(Some("segredo"), &dir))
+        .oneshot(get("/openapi.yaml", None))
         .await
         .expect("resposta do servidor");
 
@@ -229,7 +257,6 @@ async fn openapi_servido_a_partir_do_yaml() {
         .expect("corpo do openapi");
     let text = String::from_utf8(bytes.to_vec()).expect("yaml utf-8");
     assert!(text.contains("openapi: 3.1.0"));
-    assert!(text.contains("/v1/raw"));
 }
 
 #[tokio::test]
@@ -426,7 +453,7 @@ async fn upload_com_path_fora_da_allowlist_devolve_400_sem_rede() {
     let (status, body) = send(router, req).await;
 
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["error"]["code"], "caminho_nao_permitido");
+    assert_eq!(body["error"]["code"], "destino_upload_invalido");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -575,4 +602,53 @@ async fn rotas_de_convite_exigem_token() {
         assert_eq!(body["ok"], false, "{metodo} {uri}");
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn upload_em_rota_inexistente_devolve_400() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+    let req = multipart(
+        "/v1/upload",
+        "tok",
+        &[("path", "/merger/api/cliente/nao_existe_upload")],
+    );
+    let (status, body) = send(router, req).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "destino_upload_invalido");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn tickets_fechar_exige_id_na_query() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+    let req = request("POST", "/v1/tickets/fechar", Some("tok"), "");
+    let (status, body) = send(router, req).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "requisicao_invalida");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn erro_de_negocio_do_painel_vira_409() {
+    // Cobre o contrato do envelope sem depender do painel: usa a funcao pura
+    // via resposta HTTP simulada nao e possivel aqui, entao o teste unitario
+    // em routes.rs cobre `checar_erro_negocio`; aqui garantimos o status padrao.
+    let resposta = AppError::new(
+        StatusCode::CONFLICT,
+        "erro_negocio_painel",
+        "Trial nao pode ser estendido",
+    )
+    .with_details(serde_json::json!({"ok": false, "erro": "Trial nao pode ser estendido"}))
+    .into_response();
+    assert_eq!(resposta.status(), StatusCode::CONFLICT);
+    let bytes = to_bytes(resposta.into_body(), 4096)
+        .await
+        .expect("corpo do erro");
+    let body: Value = serde_json::from_slice(&bytes).expect("json do erro");
+    assert_eq!(body["error"]["code"], "erro_negocio_painel");
+    assert_eq!(body["error"]["details"]["panel"]["ok"], false);
 }

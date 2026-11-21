@@ -106,6 +106,7 @@ Todas as rotas `/v1/*` exigem `Authorization: Bearer $ZENITH_API_TOKEN`.
 | tickets | `GET /v1/tickets` | listar chamados |
 | criar ticket | `POST /v1/tickets/criar` | abrir chamado (`assunto`, `texto`) |
 | responder ticket | `POST /v1/tickets/responder` | responder (`id`, `texto`) |
+| fechar ticket | `POST /v1/tickets/fechar?id=N` | fecha o proprio chamado |
 | upload | `POST /v1/upload` | multipart generico (banner, logo, anexo, import) |
 | avisos | `GET /v1/avisos` | notificacoes do painel |
 | stats | `GET /v1/stats` | numeros do catalogo |
@@ -159,6 +160,27 @@ Respostas uteis:
 - `401` `login_recusado`: credenciais invalidas ou painel vencido.
 - `429` `rate_limit`: o painel limita tentativas (10/min por IP).
 
+### Erro de negocio do painel (409)
+
+As rotas **tipadas** convertem recusa de negocio do painel
+(`data.ok:false` ou `data.erro`) em HTTP **409**:
+
+```json
+{"ok":false,"error":{
+  "code":"erro_negocio_painel",
+  "message":"Trial nao pode ser estendido - use renovar com plano pago",
+  "details":{"panel":{"ok":false,"erro":"Trial nao pode ser estendido - use renovar com plano pago"}}
+}}
+```
+
+Isso cobre saldo insuficiente, duplicidade, trial, permissao etc. Voce **nao
+precisa** checar `data.ok` nas rotas tipadas. O `/v1/raw` continua devolvendo o
+corpo cru do painel (HTTP 200), porque ali o chamador quer inspecionar tudo.
+
+O `/v1/login` devolve `data.estado` + `data.whoami`; `/v1/whoami` devolve o
+objeto direto em `data` (shapes diferentes de proposito, documentados no
+OpenAPI).
+
 ### Convite x adesao
 
 - **Convite de revenda** (`/v1/revendas/convite`): link publico
@@ -196,12 +218,17 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   "$BASE/v1/upload"
 ```
 
-- `path` e obrigatorio e segue a mesma allowlist do `/v1/raw`.
+- `path` e obrigatorio e precisa existir no catalogo de rotas do painel
+  (874 rotas embutidas). Rota nova pode ser liberada em `ZENITH_UPLOAD_PATHS`
+  (lista separada por virgula). Destino inexistente -> `400 destino_upload_invalido`.
+- Se o painel responder `2xx` com corpo vazio (catch-all), a API devolve
+  `502 erro_painel_resposta_vazia` em vez de fingir sucesso.
 - Toda parte com `filename` vira arquivo; as demais viram campos texto.
 - `confirm=1` libera rotas destrutivas.
 - Limite local de 25 MB por arquivo.
 - Para tickets, prefira `/v1/tickets/criar` e `/v1/tickets/responder` (JSON,
-  sem anexo).
+  sem anexo). Para fechar, `/v1/tickets/fechar?id=N` (o painel exige `id` na
+  query, nunca no corpo).
 
 ## Receitas
 

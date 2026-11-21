@@ -30,5 +30,11 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: OpenAPI JSON sincronizado
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/openapi_to_json.py
+          git diff --exit-code docs/openapi.json
+
       - name: cargo test
         run: cargo test --workspace

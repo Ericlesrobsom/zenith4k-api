@@ -12,6 +12,8 @@ pub struct AppError {
     pub status: StatusCode,
     pub code: &'static str,
     pub message: String,
+    /// Corpo bruto do painel (usado em erro de negocio).
+    pub details: Option<serde_json::Value>,
 }
 
 impl AppError {
@@ -20,7 +22,14 @@ impl AppError {
             status,
             code,
             message: message.into(),
+            details: None,
         }
+    }
+
+    /// Anexa o corpo original do painel ao erro (campo `details.panel`).
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
     }
 
     /// Requisicao malformada (JSON invalido, query invalida...).
@@ -61,13 +70,16 @@ impl From<ApiError> for AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let body = json!({
-            "ok": false,
-            "error": {
-                "code": self.code,
-                "message": self.message,
-            }
+        let mut error = json!({
+            "code": self.code,
+            "message": self.message,
         });
+        if let Some(details) = self.details {
+            if let Some(obj) = error.as_object_mut() {
+                obj.insert("details".to_string(), json!({ "panel": details }));
+            }
+        }
+        let body = json!({ "ok": false, "error": error });
         (self.status, Json(body)).into_response()
     }
 }

@@ -89,12 +89,34 @@ fn nota_exige_id_ou_username() {
 }
 
 #[test]
-fn unlimited_normaliza_saldo_ausente_para_zero() {
+fn unlimited_promocao_usa_saldo_zero() {
     let montado =
         build_revenda_unlimited_body(&json!({"id": 3, "novo_estado": 1})).expect("corpo valido");
     assert_eq!(
         montado,
         json!({"id": 3, "novo_estado": 1, "saldo_rebaixamento": 0})
+    );
+}
+
+#[test]
+fn unlimited_rebaixamento_omite_saldo_ausente() {
+    // Sem saldo explicito, o metodo le o saldo atual antes de enviar; o
+    // builder nao pode inventar zero (zeraria a revenda).
+    let montado =
+        build_revenda_unlimited_body(&json!({"id": 3, "novo_estado": 0})).expect("corpo valido");
+    assert_eq!(montado, json!({"id": 3, "novo_estado": 0}));
+    assert!(montado.get("saldo_rebaixamento").is_none());
+}
+
+#[test]
+fn unlimited_rebaixamento_aceita_saldo_explicito_zero() {
+    let montado = build_revenda_unlimited_body(&json!({
+        "id": 3, "novo_estado": 0, "saldo_rebaixamento": 0
+    }))
+    .expect("corpo valido");
+    assert_eq!(
+        montado,
+        json!({"id": 3, "novo_estado": 0, "saldo_rebaixamento": 0})
     );
 }
 

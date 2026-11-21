@@ -205,6 +205,11 @@ enum Command {
         #[command(flatten)]
         list: ListArgs,
     },
+    /// Fecha um chamado de suporte.
+    TicketsFechar {
+        /// ID do chamado.
+        id: i64,
+    },
     /// Lista avisos do painel.
     Avisos {
         #[command(flatten)]
@@ -434,6 +439,11 @@ async fn main() -> Result<()> {
         }
         Command::Avisos { list } => {
             list_panel(&client, "/merger/api/avisos", &list).await?;
+        }
+        Command::TicketsFechar { id } => {
+            client.ensure_login().await?;
+            let resposta = client.tickets_fechar(id).await?;
+            print_json(&resposta)?;
         }
         Command::Stats => {
             client.ensure_login().await?;

@@ -190,7 +190,15 @@ const server = http.createServer(async (req, res) => {
     const alvo = revendas.find((r) => r.id === Number(body.id));
     if (!alvo) return json(res, 200, { ok: false, erro: "Revenda nao encontrada" });
     alvo.unlimited = Number(body.novo_estado) === 1 ? 1 : 0;
-    return json(res, 200, { ok: true, unlimited: alvo.unlimited });
+    if (Number(body.novo_estado) === 0) {
+      alvo.credits = Number(body.saldo_rebaixamento ?? 0);
+    }
+    return json(res, 200, {
+      ok: true,
+      unlimited: alvo.unlimited,
+      credits: alvo.credits,
+      saldo_aplicado: Number(body.saldo_rebaixamento ?? 0),
+    });
   }
 
   if (path === "/merger/api/cliente/transfer_revenda/destinos" && method === "GET") {
@@ -255,6 +263,26 @@ const server = http.createServer(async (req, res) => {
     }
     const body = JSON.parse((await readBody(req)) || "{}");
     return json(res, 200, { ok: true, config: body });
+  }
+
+  if (path === "/merger/api/cliente/sigma_users/estender" && method === "POST") {
+    return json(res, 200, {
+      ok: false,
+      erro: "Trial nao pode ser estendido - use renovar com plano pago",
+    });
+  }
+
+  if (path === "/merger/api/cliente/tickets/fechar" && method === "POST") {
+    const id = Number(url.searchParams.get("id"));
+    if (!id) return json(res, 200, { ok: false, erro: "sem_acesso" });
+    return json(res, 200, { ok: true });
+  }
+
+  // Rota valida no catalogo que simula o catch-all vazio do painel.
+  if (path === "/merger/api/cliente/melhorias/listar" && method === "POST") {
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.end("");
+    return;
   }
 
   if (path === "/merger/api/cliente/revendas/nota" && method === "POST") {

@@ -216,6 +216,12 @@ let resposta = client
 > ilimitado e pode zerar a criacao de linhas. Confirme o efeito antes de
 > chamar. A rota nao e classificada como destrutiva pelo transporte (nao ha
 > `/delete` no caminho), entao a confirmacao e responsabilidade do chamador.
+>
+> **Saldo no rebaixamento:** se `novo_estado = 0` e `saldo_rebaixamento` for
+> omitido, o cliente le o saldo atual da revenda (`credits`) e reaplica esse
+> valor, em vez de mandar `0` (o painel zeraria tudo). Um `0` **explicito** e
+> tratado como perda intencional. Se a leitura do saldo falhar, o metodo
+> devolve `ApiError::Config` pedindo o valor explicito.
 
 ### `transfer_revenda_destinos` / `transfer_revenda`
 

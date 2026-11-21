@@ -13,13 +13,17 @@ info:
 
     Envelope de erro:
 
-        {"ok": false, "error": {"code": "confirmacao_necessaria", "message": "..."}}
+        {"ok": false, "error": {"code": "...", "message": "...", "details": {"panel": <corpo do painel>}}}
+
+    Recusa de negocio do painel (`data.ok:false` ou `data.erro`) nas rotas
+    tipadas vira HTTP **409** com `code: erro_negocio_painel` e o corpo
+    original em `details.panel`. O `/v1/raw` continua devolvendo o corpo cru
+    do painel, sem traducao.
 
     Autenticacao local: `Authorization: Bearer $ZENITH_API_TOKEN`.
     Sem token configurado, o servidor aceita somente loopback (modo dev).
 
-    Este documento e servido por `GET /openapi.json` em YAML (arquivo
-    `docs/openapi.yaml`, embutido no binario com `include_str!`).
+    `GET /openapi.json` serve JSON; `GET /openapi.yaml` serve o YAML fonte.
 servers:
   - url: http://127.0.0.1:8787
     description: bind padrao (`ZENITH_BIND`)
@@ -820,6 +824,29 @@ paths:
           $ref: '#/components/responses/NaoAutorizado'
         '502':
           $ref: '#/components/responses/ErroPainel'
+  /v1/tickets/fechar:
+    post:
+      operationId: fecharTicket
+      tags: [suporte]
+      summary: Fecha o proprio chamado
+      description: O painel exige `id` na query; no corpo devolve `sem_acesso`.
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '409':
+          $ref: '#/components/responses/ErroNegocio'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
   /v1/tickets/responder:
     post:
       operationId: responderTicket
@@ -956,6 +983,14 @@ components:
             $ref: '#/components/schemas/ErrorEnvelope'
     NaoEncontrado:
       description: Rota local inexistente (fallback) ou rota nao encontrada no painel.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ErroNegocio:
+      description: |
+        O painel recusou a operacao por regra de negocio (saldo, duplicidade,
+        trial, permissao). O corpo original esta em `error.details.panel`.
       content:
         application/json:
           schema:

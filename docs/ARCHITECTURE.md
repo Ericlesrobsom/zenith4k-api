@@ -167,6 +167,36 @@ foram mapeados para o status mais fiel ao significado, e o restante segue
 Fallbacks (`404 rota_nao_encontrada`, `405 metodo_nao_permitido`) e rejeicoes
 de JSON (`400 json_invalido`) usam o mesmo envelope de erro.
 
+## Erro de negocio e envelope
+
+O painel usa `200 {"ok":false,"erro":"..."}` para recusas legitimas. As rotas
+tipadas detectam isso (`checar_erro_negocio`) e devolvem **409** com:
+
+```json
+{"ok":false,"error":{"code":"erro_negocio_painel","message":"...","details":{"panel":{...}}}}
+```
+
+O `/v1/raw` e a excecao: devolve o corpo cru, sem traducao. Sem essa traducao,
+um agente que validasse apenas `resp.ok` acharia que a operacao funcionou.
+
+## Uploads
+
+`/v1/upload` valida o `path` contra o catalogo de rotas do painel
+(`scripts/extract_paths.mjs` -> `panel_paths.txt`, 874 rotas). Rotas novas podem
+ser liberadas em `ZENITH_UPLOAD_PATHS` (virgula). Resposta `2xx` com corpo vazio
+(catch-all do painel) vira `502 erro_painel_resposta_vazia`.
+
+## OpenAPI
+
+`/openapi.json` serve JSON valido; `/openapi.yaml` serve o YAML fonte. O JSON e
+gerado por `scripts/openapi_to_json.py` e o CI falha se ficar dessincronizado.
+
+## Auditoria
+
+O JSONL grava `{ts,method,path,status,elapsed_ms}` e, para `/v1/raw`, tambem
+`panel_path` (o caminho real chamado no painel, sem query/corpo). O header
+interno usado para transportar esse dado e removido antes da resposta.
+
 ## Seguranca
 
 - **Token local**: comparado em tempo constante. Sem token, somente peer
