@@ -13,6 +13,19 @@ import http from "node:http";
 const port = Number(process.argv[2] || 18999);
 const SESSION = "sessao-fake-123";
 
+// Revendas criadas durante o teste (memoria do processo).
+const revendas = [
+  {
+    id: 1,
+    username: "revenda1",
+    usuario_acesso: "revenda1",
+    credits: 10,
+    unlimited: 0,
+    enabled: 1,
+  },
+];
+let proximoId = 2;
+
 const whoami = {
   username: "teste",
   usuario_acesso: "teste",
@@ -92,17 +105,81 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
-  if (path === "/merger/api/cliente/revendas") {
-    return json(res, 200, [
-      {
-        id: 1,
-        username: "revenda1",
-        usuario_acesso: "revenda1",
-        credits: 10,
-        unlimited: 0,
-        enabled: 1,
-      },
-    ]);
+  if (path === "/merger/api/cliente/revendas" && method === "GET") {
+    return json(res, 200, revendas);
+  }
+
+  if (path === "/merger/api/cliente/revendas" && method === "POST") {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    if (!body.username || String(body.password || "").length < 4) {
+      return json(res, 200, {
+        ok: false,
+        erro: "Usuário e senha (min 4 chars) obrigatórios",
+      });
+    }
+    if (revendas.some((r) => r.username === body.username)) {
+      return json(res, 200, {
+        ok: false,
+        erro: "Essa identificação de revenda já está em uso",
+      });
+    }
+    const unlimited = Number(body.unlimited) === 1 ? 1 : 0;
+    const credits = unlimited ? 0 : Number(body.credits || 0);
+    if (!unlimited && credits < 10) {
+      return json(res, 200, { ok: false, erro: "Mínimo 10 créditos para criar revenda" });
+    }
+    const nova = {
+      id: proximoId++,
+      username: body.username,
+      usuario_acesso: body.username,
+      credits,
+      unlimited,
+      enabled: 1,
+      pode_criar_revenda: Number(body.pode_criar_revenda ?? 1),
+      pode_criar_ilimitado: unlimited ? Number(body.pode_criar_ilimitado || 0) : 0,
+      pode_conectar_whatsapp: Number(body.pode_conectar_whatsapp || 0),
+    };
+    revendas.push(nova);
+    return json(res, 200, {
+      ok: true,
+      id: nova.id,
+      username: nova.username,
+      usuario_acesso: nova.usuario_acesso,
+    });
+  }
+
+  if (path === "/merger/api/cliente/revendas" && method === "PATCH") {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    const alvo = revendas.find((r) => r.id === Number(body.id));
+    if (!alvo) return json(res, 200, { ok: false, erro: "Não autorizado" });
+    alvo.enabled = Number(body.enabled) === 1 ? 1 : 0;
+    return json(res, 200, { ok: true, afetados: 1 });
+  }
+
+  if (path === "/merger/api/cliente/revendas" && method === "DELETE") {
+    const id = Number(url.searchParams.get("id"));
+    const indice = revendas.findIndex((r) => r.id === id);
+    if (indice < 0) return json(res, 200, { ok: false, erro: "Não autorizado" });
+    revendas.splice(indice, 1);
+    return json(res, 200, { ok: true, removidos: 1, linhas_apagadas: 0 });
+  }
+
+  if (path === "/merger/api/cliente/revendas" && method === "PUT") {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    const alvo = revendas.find((r) => r.id === Number(body.id));
+    if (!alvo) return json(res, 200, { ok: false, erro: "Não autorizado" });
+    if (body.usuario_acesso) alvo.usuario_acesso = body.usuario_acesso;
+    return json(res, 200, { ok: true });
+  }
+
+  if (path === "/merger/api/cliente/revendas/nota" && method === "POST") {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    const alvo = revendas.find(
+      (r) => r.username === body.username || r.id === Number(body.id)
+    );
+    if (!alvo) return json(res, 200, { ok: false, erro: "forbidden" });
+    alvo.vencimento_painel = body.vencimento || alvo.vencimento_painel || "";
+    return json(res, 200, { ok: true });
   }
 
   if (path === "/merger/api/cliente/sigma_users") {

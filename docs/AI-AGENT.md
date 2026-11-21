@@ -73,6 +73,10 @@ Todas as rotas `/v1/*` exigem `Authorization: Bearer $ZENITH_API_TOKEN`.
 | whoami | `GET /v1/whoami` | confirmar identidade e papel |
 | raw | `POST /v1/raw` | qualquer rota da allowlist |
 | revendas | `GET /v1/revendas` | listar sub-revendas |
+| criar revenda | `POST /v1/revendas/criar` | cria sub-revenda (+30 dias por default) |
+| editar revenda | `PUT /v1/revendas/editar` | acesso, senha, permissoes ou creditos |
+| toggle revenda | `PATCH /v1/revendas/toggle` | liga/desliga revenda + subarvore |
+| remover revenda | `DELETE /v1/revendas/remover?id=N&confirm=true` | **destrutivo** |
 | arvore | `GET /v1/revendas/arvore` | hierarquia completa |
 | renovar revenda | `POST /v1/revendas/renovar` | +30 dias manuais |
 | nota revenda | `POST /v1/revendas/nota` | contato/observacoes |
@@ -147,6 +151,21 @@ Respostas uteis:
 - `401` `codigo_2fa_invalido`: codigo errado/expirado; peca outro.
 - `401` `login_recusado`: credenciais invalidas ou painel vencido.
 - `429` `rate_limit`: o painel limita tentativas (10/min por IP).
+
+### Criar uma revenda
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"revenda_x","password":"senha-forte","credits":100,"pode_criar_revenda":1,"dias_painel":30}' \
+  "$BASE/v1/revendas/criar"
+```
+
+- `dias_painel` tem default **30**; `0` deixa o vencimento como o painel.
+- `credits` minimo 10 quando `unlimited` nao for 1.
+- Se a criacao funcionar e o vencimento falhar, a resposta traz
+  `vencimento_aplicado: false` e `aviso` — a revenda **existe**; corrija com
+  `POST /v1/revendas/editar` ou `revendas/nota`.
 
 ## Uploads (multipart)
 

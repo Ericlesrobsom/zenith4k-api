@@ -5,8 +5,9 @@
 
 use merger_core::api::planos::build_criar_linha_body;
 use merger_core::api::revendas::{
-    build_revenda_nota_body, build_revenda_renovar_body, build_revenda_unlimited_body,
-    build_transfer_revenda_body,
+    build_revenda_editar_body, build_revenda_nota_body, build_revenda_nova_body,
+    build_revenda_renovar_body, build_revenda_unlimited_body, build_transfer_revenda_body,
+    vencimento_em_dias,
 };
 use merger_core::api::usuarios::{
     build_usuario_adultos_query, build_usuario_contato_body, build_usuario_criar_query,
@@ -403,4 +404,135 @@ async fn planos_creditos_remover_exige_confirmacao() {
         .await
         .expect_err("deve falhar");
     assert!(matches!(erro, ApiError::ConfirmationRequired(_)));
+}
+
+// ---------------------------------------------------------------------------
+// Criacao/edicao/toggle/remocao de revenda (mesma rota da listagem)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn criar_revenda_exige_minimo_de_dez_creditos() {
+    let erro = build_revenda_nova_body(&json!({
+        "username": "nova", "password": "1234", "credits": 9
+    }))
+    .expect_err("creditos abaixo do minimo");
+    assert!(matches!(erro, ApiError::Config(_)));
+}
+
+#[test]
+fn criar_revenda_ilimitada_zera_creditos() {
+    let corpo = build_revenda_nova_body(&json!({
+        "username": " nova ",
+        "password": "1234",
+        "unlimited": 1,
+        "credits": 100,
+        "pode_criar_ilimitado": 1,
+        "pode_criar_revenda": true,
+        "pode_conectar_whatsapp": "1"
+    }))
+    .expect("corpo valido");
+    assert_eq!(
+        corpo,
+        json!({
+            "username": "nova",
+            "password": "1234",
+            "credits": 0,
+            "unlimited": 1,
+            "pode_criar_revenda": 1,
+            "pode_criar_ilimitado": 1,
+            "pode_conectar_whatsapp": 1
+        })
+    );
+}
+
+#[test]
+fn criar_revenda_limitada_aplica_defaults_do_painel() {
+    let corpo = build_revenda_nova_body(&json!({
+        "username": "nova", "password": "abcd", "credits": 10, "pode_criar_ilimitado": 1
+    }))
+    .expect("corpo valido");
+    assert_eq!(corpo["unlimited"], 0);
+    assert_eq!(corpo["pode_criar_revenda"], 1);
+    // Revenda finita nunca nasce com permissao de criar ilimitadas.
+    assert_eq!(corpo["pode_criar_ilimitado"], 0);
+    assert_eq!(corpo["pode_conectar_whatsapp"], 0);
+}
+
+#[test]
+fn criar_revenda_aceita_senha_como_alias() {
+    let corpo = build_revenda_nova_body(&json!({
+        "username": "nova", "senha": "1234", "credits": 10
+    }))
+    .expect("alias senha");
+    assert_eq!(corpo["password"], "1234");
+}
+
+#[test]
+fn criar_revenda_exige_senha_de_quatro_caracteres() {
+    let erro = build_revenda_nova_body(&json!({
+        "username": "nova", "password": "123", "credits": 10
+    }))
+    .expect_err("senha curta");
+    assert!(matches!(erro, ApiError::Config(_)));
+}
+
+#[test]
+fn editar_revenda_rejeita_grupos_misturados() {
+    let erro = build_revenda_editar_body(&json!({
+        "id": 7, "transfer": 10, "set_pode_criar_revenda": 0
+    }))
+    .expect_err("grupos misturados");
+    assert!(matches!(erro, ApiError::Config(_)));
+}
+
+#[test]
+fn editar_revenda_monta_grupo_de_acesso_com_senha() {
+    let corpo = build_revenda_editar_body(&json!({
+        "id": 7, "usuario_acesso": "novo.login", "password": "1234"
+    }))
+    .expect("acesso + senha");
+    assert_eq!(
+        corpo,
+        json!({"id": 7, "usuario_acesso": "novo.login", "password": "1234"})
+    );
+}
+
+#[test]
+fn editar_revenda_exige_transferencia_minima() {
+    let erro = build_revenda_editar_body(&json!({"id": 7, "transfer": 9}))
+        .expect_err("transferencia curta");
+    assert!(matches!(erro, ApiError::Config(_)));
+}
+
+#[test]
+fn vencimento_em_dias_tem_formato_iso() {
+    let data = vencimento_em_dias(30);
+    assert_eq!(data.len(), 10);
+    assert_eq!(data.as_bytes()[4], b'-');
+    assert_eq!(data.as_bytes()[7], b'-');
+    assert!(data[..4].parse::<i32>().is_ok());
+}
+
+#[tokio::test]
+async fn remover_revenda_exige_confirmacao_sem_rede() {
+    let erro = cliente()
+        .revendas_remover(7, false)
+        .await
+        .expect_err("sem confirm");
+    assert!(matches!(erro, ApiError::ConfirmationRequired(_)));
+}
+
+#[tokio::test]
+async fn toggle_e_remocao_validam_id_antes_da_rede() {
+    let erro = cliente()
+        .revendas_toggle(0, true)
+        .await
+        .expect_err("id invalido");
+    assert!(matches!(erro, ApiError::Config(_)));
+
+    let erro = cliente()
+        .revendas_remover(-1, true)
+        .await
+        .expect_err("id invalido");
+    assert!(matches!(erro, ApiError::Config(_)));
 }

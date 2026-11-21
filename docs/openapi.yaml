@@ -214,6 +214,101 @@ paths:
           $ref: '#/components/responses/Proibido'
         '502':
           $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/criar:
+    post:
+      operationId: criarRevenda
+      tags: [revendas]
+      summary: Cria uma sub-revenda
+      description: |
+        `POST /merger/api/cliente/revendas` (a criacao NAO e `/revendas/criar`).
+        O painel aceita no maximo `credits` >= 10 quando `unlimited=0`.
+        `dias_painel` e um extra desta API: default 30, `0` nao mexe no
+        vencimento. Se a criacao funcionar e o vencimento falhar, a resposta
+        traz `vencimento_aplicado=false` e `aviso`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevendaNova'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '403':
+          $ref: '#/components/responses/Proibido'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/editar:
+    put:
+      operationId: editarRevenda
+      tags: [revendas]
+      summary: Edita acesso, senha, permissoes ou creditos
+      description: Um grupo por chamada, igual ao painel (PUT na colecao).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevendaEditar'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/toggle:
+    patch:
+      operationId: toggleRevenda
+      tags: [revendas]
+      summary: Liga/desliga a revenda e a subarvore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevendaToggle'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/remover:
+    delete:
+      operationId: removerRevenda
+      tags: [revendas]
+      summary: Remove a revenda e a subarvore (destrutivo)
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: confirm
+          in: query
+          required: true
+          schema:
+            type: boolean
+            const: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '409':
+          $ref: '#/components/responses/ConflitoConfirmacao'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
   /v1/revendas/arvore:
     get:
       operationId: arvoreRevendas
@@ -1053,6 +1148,74 @@ components:
           type: integer
           minimum: 1
           maximum: 3650
+    RevendaNova:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          minLength: 4
+        credits:
+          type: integer
+          minimum: 10
+          description: Minimo 10 quando unlimited=0; ignorado quando unlimited=1.
+          default: 10
+        unlimited:
+          type: integer
+          enum: [0, 1]
+          default: 0
+        pode_criar_revenda:
+          type: integer
+          enum: [0, 1]
+          default: 1
+        pode_criar_ilimitado:
+          type: integer
+          enum: [0, 1]
+          default: 0
+        pode_conectar_whatsapp:
+          type: integer
+          enum: [0, 1]
+          default: 0
+        dias_painel:
+          type: integer
+          minimum: 0
+          maximum: 3650
+          default: 30
+          description: Extra desta API; 0 nao altera o vencimento.
+    RevendaEditar:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: integer
+        usuario_acesso:
+          type: string
+        password:
+          type: string
+          minLength: 4
+        transfer:
+          type: integer
+          minimum: 10
+        set_pode_criar_revenda:
+          type: integer
+          enum: [0, 1]
+        set_pode_criar_ilimitado:
+          type: integer
+          enum: [0, 1]
+        set_pode_conectar_whatsapp:
+          type: integer
+          enum: [0, 1]
+    RevendaToggle:
+      type: object
+      required: [id, enabled]
+      properties:
+        id:
+          type: integer
+        enabled:
+          type: integer
+          enum: [0, 1]
     UsuarioDelete:
       type: object
       required: [id, confirm]

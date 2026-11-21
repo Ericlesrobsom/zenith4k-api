@@ -13,7 +13,7 @@ pub mod state;
 
 use axum::extract::DefaultBodyLimit;
 use axum::middleware;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, patch, post, put};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -32,6 +32,10 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/whoami", get(routes::whoami))
         .route("/v1/raw", post(routes::raw))
         .route("/v1/revendas", get(routes::revendas))
+        .route("/v1/revendas/criar", post(routes::revendas_criar))
+        .route("/v1/revendas/editar", put(routes::revendas_editar))
+        .route("/v1/revendas/toggle", patch(routes::revendas_toggle))
+        .route("/v1/revendas/remover", delete(routes::revendas_remover))
         .route("/v1/revendas/arvore", get(routes::revendas_arvore))
         .route("/v1/revendas/renovar", post(routes::revendas_renovar))
         .route("/v1/revendas/nota", post(routes::revendas_nota))

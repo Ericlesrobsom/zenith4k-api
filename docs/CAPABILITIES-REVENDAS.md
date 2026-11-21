@@ -38,9 +38,20 @@ autenticado `MergerClient::send`, que aplica allowlist de rota e a trava de
 
 ## Revendas
 
+> **Atencao ao caminho:** a criacao de revenda **nao** e `/revendas/criar`.
+> O painel usa a **colecao** `/merger/api/cliente/revendas` com o metodo
+> `POST` (a mesma rota da listagem). O frontend oficial (`12d_criar_revenda_pagina.js`)
+> faz exatamente isso. Testar `/revendas/criar` cai no catch-all do painel e
+> pode devolver `200` vazio — nao significa que a rota exista.
+
 | Operacao | Metodo + rota | Corpo / query | Resposta |
 |---|---|---|---|
 | `revendas_list` | `GET /merger/api/cliente/revendas` | query repassada (o painel ignora) | array de revendas |
+| `revendas_criar` | `POST /merger/api/cliente/revendas` | `{username, password, credits, unlimited, pode_criar_*, pode_conectar_whatsapp}` | `{ok, username, usuario_acesso}` |
+| `revendas_criar_com_vencimento` | `POST` + `POST /revendas/nota` | corpo acima + `dias_painel` | resposta acima + `vencimento_painel` |
+| `revendas_editar` | `PUT /merger/api/cliente/revendas` | `{id, usuario_acesso?/password?/transfer?/set_pode_*?}` | `{ok}` |
+| `revendas_toggle` | `PATCH /merger/api/cliente/revendas` | `{id, enabled}` | `{ok, afetados}` |
+| `revendas_remover` | `DELETE /merger/api/cliente/revendas?id=N` | `confirm=true` | `{ok, removidos, linhas_apagadas}` |
 | `revendas_tree` | `GET /merger/api/cliente/revendas/arvore` | — | array hierarquico (`sub_revendas`) |
 | `revendas_renovar` | `POST /merger/api/cliente/revendas/renovar` | `{id, vencimento_atual}` | `{ok, id, username, vencimento_painel, ultima_renovacao_manual}` |
 | `revendas_nota_ler` | `GET /merger/api/cliente/revendas/nota?id=` | query `id` | `{ok, username, contato_*, vencimento}` |
@@ -69,6 +80,64 @@ for revenda in revendas.as_array().into_iter().flatten() {
     );
 }
 ```
+
+### `revendas_criar` / `revendas_criar_com_vencimento`
+
+Cria uma sub-revenda filha da franquia autenticada. O painel valida:
+
+- `username` unico (identidade/acesso);
+- `password` com no minimo 4 caracteres;
+- `credits` minimo **10** quando `unlimited = 0`;
+- `unlimited = 1` exige que o criador tambem seja ilimitado e tenha
+  `pode_criar_ilimitado`;
+- `pode_criar_ilimitado` e forcado a `0` em revenda finita;
+- debita os creditos iniciais do criador quando ele nao e ilimitado;
+- grava o evento `revenda.criada` na auditoria.
+
+O `POST` **nao aceita vencimento**. `revendas_criar_com_vencimento` faz a
+criacao e, em seguida, grava `vencimento` via `revendas/nota` (a mesma
+sequencia da UI). Se a segunda etapa falhar, a resposta traz
+`vencimento_aplicado: false` e `aviso` — a revenda **foi criada**.
+
+```rust
+use serde_json::json;
+
+let nova = client
+    .revendas_criar_com_vencimento(
+        json!({
+            "username": "revenda_x",
+            "password": "senha-forte",
+            "credits": 100,
+            "pode_criar_revenda": 1,
+        }),
+        30,
+    )
+    .await?;
+// {"ok":true,"username":"revenda_x","vencimento_painel":"2026-12-21",...}
+```
+
+Na API local: `POST /v1/revendas/criar` (o campo `dias_painel` tem default
+**30**; use `0` para nao mexer no vencimento).
+
+### `revendas_editar`
+
+`PUT` com **um grupo por chamada**, igual ao painel:
+
+| Grupo | Corpo |
+|---|---|
+| Acesso | `{id, usuario_acesso, password?}` |
+| Senha | `{id, password}` |
+| Permissoes | `{id, set_pode_criar_revenda?, set_pode_criar_ilimitado?, set_pode_conectar_whatsapp?}` |
+| Creditos | `{id, transfer}` (minimo 10; debita do pai se ele nao for ilimitado) |
+
+Misturar grupos devolve `ApiError::Config` antes de qualquer request.
+
+### `revendas_toggle` / `revendas_remover`
+
+- `revendas_toggle(id, enabled)` usa `PATCH` e afeta a revenda + subarvore.
+- `revendas_remover(id, confirm)` usa `DELETE ?id=N`; e **destrutivo**
+  (apaga as linhas Xtream da subarvore) e exige `confirm = true`. A trava de
+  exclusao do painel ainda pode recusar mesmo com a confirmacao local.
 
 ### `revendas_tree`
 

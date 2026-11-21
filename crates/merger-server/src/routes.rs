@@ -390,6 +390,115 @@ macro_rules! fixed_route {
 list_route!(revendas, "/merger/api/cliente/revendas");
 fixed_route!(revendas_arvore, "/merger/api/cliente/revendas/arvore");
 
+/// `POST /v1/revendas/criar` — cria sub-revenda e aplica o vencimento.
+///
+/// Corpo = contrato do painel (`username`, `password`, `credits`, `unlimited`,
+/// `pode_criar_revenda`, `pode_criar_ilimitado`, `pode_conectar_whatsapp`) +
+/// `dias_painel` opcional (default 30; `0` nao mexe no vencimento).
+pub async fn revendas_criar(
+    State(st): State<AppState>,
+    ApiJson(mut body): ApiJson<Value>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let dias =
+        match body.get("dias_painel") {
+            None => 30,
+            Some(valor) => valor.as_u64().filter(|dias| *dias <= 3650).ok_or_else(|| {
+                AppError::bad_request("dias_painel deve ser inteiro entre 0 e 3650")
+            })? as u32,
+        };
+    if let Some(obj) = body.as_object_mut() {
+        obj.remove("dias_painel");
+    }
+
+    let data = match st
+        .client
+        .revendas_criar_com_vencimento(body.clone(), dias)
+        .await
+    {
+        Err(ApiError::SessionExpired) | Err(ApiError::NotAuthenticated) => {
+            st.ensure_login().await?;
+            st.client.revendas_criar_com_vencimento(body, dias).await
+        }
+        outro => outro,
+    }
+    .map_err(AppError::from)?;
+    Ok(success(started, data))
+}
+
+/// `PUT /v1/revendas/editar` — acesso, senha, permissoes ou creditos.
+pub async fn revendas_editar(
+    State(st): State<AppState>,
+    ApiJson(body): ApiJson<Value>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data = match st.client.revendas_editar(body.clone()).await {
+        Err(ApiError::SessionExpired) | Err(ApiError::NotAuthenticated) => {
+            st.ensure_login().await?;
+            st.client.revendas_editar(body).await
+        }
+        outro => outro,
+    }
+    .map_err(AppError::from)?;
+    Ok(success(started, data))
+}
+
+/// `PATCH /v1/revendas/toggle` — liga/desliga a revenda e a subarvore.
+pub async fn revendas_toggle(
+    State(st): State<AppState>,
+    ApiJson(body): ApiJson<Value>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let id = body
+        .get("id")
+        .and_then(Value::as_i64)
+        .filter(|id| *id > 0)
+        .ok_or_else(|| AppError::bad_request("campo id obrigatorio (inteiro positivo)"))?;
+    let habilitar = body
+        .get("enabled")
+        .and_then(|valor| match valor {
+            Value::Bool(flag) => Some(*flag),
+            Value::Number(numero) => numero.as_i64().map(|n| n == 1),
+            _ => None,
+        })
+        .ok_or_else(|| AppError::bad_request("campo enabled obrigatorio (0/1 ou booleano)"))?;
+
+    let data = match st.client.revendas_toggle(id, habilitar).await {
+        Err(ApiError::SessionExpired) | Err(ApiError::NotAuthenticated) => {
+            st.ensure_login().await?;
+            st.client.revendas_toggle(id, habilitar).await
+        }
+        outro => outro,
+    }
+    .map_err(AppError::from)?;
+    Ok(success(started, data))
+}
+
+/// Query de `DELETE /v1/revendas/remover`.
+#[derive(Debug, Deserialize)]
+pub struct RemoverRevendaQuery {
+    pub id: i64,
+    #[serde(default)]
+    pub confirm: bool,
+}
+
+/// `DELETE /v1/revendas/remover?id=N&confirm=true` — remove em cascata.
+pub async fn revendas_remover(
+    State(st): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<RemoverRevendaQuery>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data = match st.client.revendas_remover(query.id, query.confirm).await {
+        Err(ApiError::SessionExpired) | Err(ApiError::NotAuthenticated) => {
+            st.ensure_login().await?;
+            st.client.revendas_remover(query.id, query.confirm).await
+        }
+        outro => outro,
+    }
+    .map_err(AppError::from)?;
+    Ok(success(started, data))
+}
+
 list_route!(usuarios, "/merger/api/cliente/sigma_users");
 fixed_route!(planos, "/merger/api/cliente/planos");
 fixed_route!(creditos, "/merger/api/cliente/creditos");

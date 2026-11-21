@@ -87,6 +87,44 @@ enum Command {
         #[command(flatten)]
         list: ListArgs,
     },
+    /// Cria uma sub-revenda (POST /merger/api/cliente/revendas).
+    RevendasCriar {
+        /// Corpo JSON (username, password, credits, unlimited, pode_criar_*).
+        #[arg(long, conflicts_with = "file")]
+        json: Option<String>,
+        /// Arquivo com o corpo JSON.
+        #[arg(long, value_name = "caminho", conflicts_with = "json")]
+        file: Option<PathBuf>,
+        /// Dias de vencimento inicial do painel (0 = nao mexer).
+        #[arg(long, default_value_t = 30)]
+        dias: u32,
+    },
+    /// Edita uma sub-revenda (PUT /merger/api/cliente/revendas).
+    RevendasEditar {
+        #[arg(long, conflicts_with = "file")]
+        json: Option<String>,
+        #[arg(long, value_name = "caminho", conflicts_with = "json")]
+        file: Option<PathBuf>,
+    },
+    /// Liga/desliga a revenda e a subarvore.
+    RevendasToggle {
+        /// ID da revenda.
+        id: i64,
+        /// Habilita a revenda.
+        #[arg(long)]
+        enable: bool,
+        /// Desabilita a revenda.
+        #[arg(long)]
+        disable: bool,
+    },
+    /// Remove a revenda e a subarvore (destrutivo).
+    RevendasRemover {
+        /// ID da revenda.
+        id: i64,
+        /// Confirma a exclusao em cascata.
+        #[arg(long)]
+        confirm: bool,
+    },
     /// Lista/busca clientes finais.
     Usuarios {
         #[command(flatten)]
@@ -222,6 +260,38 @@ async fn main() -> Result<()> {
         }
         Command::Revendas { list } => {
             list_panel(&client, "/merger/api/cliente/revendas", &list).await?;
+        }
+        Command::RevendasCriar { json, file, dias } => {
+            let body = read_json_arg(json, file)?;
+            client.ensure_login().await?;
+            let resposta = client.revendas_criar_com_vencimento(body, dias).await?;
+            print_json(&resposta)?;
+        }
+        Command::RevendasEditar { json, file } => {
+            let body = read_json_arg(json, file)?;
+            client.ensure_login().await?;
+            let resposta = client.revendas_editar(body).await?;
+            print_json(&resposta)?;
+        }
+        Command::RevendasToggle {
+            id,
+            enable,
+            disable,
+        } => {
+            if enable == disable {
+                bail!("use --enable ou --disable (nao os dois)");
+            }
+            client.ensure_login().await?;
+            let resposta = client.revendas_toggle(id, enable).await?;
+            print_json(&resposta)?;
+        }
+        Command::RevendasRemover { id, confirm } => {
+            if !confirm {
+                bail!("exclusao em cascata exige --confirm");
+            }
+            client.ensure_login().await?;
+            let resposta = client.revendas_remover(id, confirm).await?;
+            print_json(&resposta)?;
         }
         Command::Usuarios { list } => {
             list_panel(&client, "/merger/api/cliente/sigma_users", &list).await?;

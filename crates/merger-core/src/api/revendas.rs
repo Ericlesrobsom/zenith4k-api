@@ -2,7 +2,11 @@
 //!
 //! Rotas (fonte: `routes_revendas.go`, `merger_api_revendas.go`,
 //! `cliente_transfer_revenda.go`):
-//! - `GET  /merger/api/cliente/revendas`
+//! - `GET    /merger/api/cliente/revendas`            (listar)
+//! - `POST   /merger/api/cliente/revendas`            (CRIAR)  ← mesma rota, metodo POST
+//! - `PUT    /merger/api/cliente/revendas`            (editar acesso/senha/permissoes/creditos)
+//! - `PATCH  /merger/api/cliente/revendas`            (ligar/desligar em cascata)
+//! - `DELETE /merger/api/cliente/revendas?id=N`       (remover em cascata)
 //! - `GET  /merger/api/cliente/revendas/arvore`
 //! - `POST /merger/api/cliente/revendas/renovar`
 //! - `GET  /merger/api/cliente/revendas/nota?id=` (leitura)
@@ -15,10 +19,15 @@
 //! `DisallowUnknownFields`, entao o helper `build_revenda_renovar_body` monta
 //! exatamente `{id, vencimento_atual}`.
 
+use chrono::{Duration as ChronoDuration, Local};
 use serde_json::{json, Map, Value};
 
 use crate::client::MergerClient;
 use crate::error::{ApiError, Result};
+
+/// Rota da colecao de revendas: lista (GET), cria (POST), edita (PUT),
+/// liga/desliga (PATCH) e remove (DELETE).
+pub const ROTA_REVENDAS: &str = "/merger/api/cliente/revendas";
 
 impl MergerClient {
     /// Lista as revendas visiveis para a franquia autenticada.
@@ -27,6 +36,135 @@ impl MergerClient {
     /// repasse de parametros futuros.
     pub async fn revendas_list(&self, query: &[(String, String)]) -> Result<Value> {
         self.send("GET", "/merger/api/cliente/revendas", query, None, false)
+            .await
+            .map(|resp| resp.json_or_text())
+    }
+
+    /// Cria uma sub-revenda (revenda filha da franquia autenticada).
+    ///
+    /// `body` aceita:
+    /// - `username` (obrigatorio)
+    /// - `password` (obrigatorio, minimo 4 caracteres)
+    /// - `credits` (inteiro; **minimo 10** quando `unlimited = 0`)
+    /// - `unlimited` (`0`/`1`; ilimitada ignora `credits`)
+    /// - `pode_criar_revenda` (`0`/`1`, default `1`)
+    /// - `pode_criar_ilimitado` (`0`/`1`, default `0`; so vale se ilimitada)
+    /// - `pode_conectar_whatsapp` (`0`/`1`, default `0`)
+    ///
+    /// O painel debita os creditos iniciais do criador quando ele nao e
+    /// ilimitado e grava o evento `revenda.criada` na auditoria.
+    pub async fn revendas_criar(&self, body: Value) -> Result<Value> {
+        let body = build_revenda_nova_body(&body)?;
+        self.send("POST", ROTA_REVENDAS, &[], Some(&body), false)
+            .await
+            .map(|resp| resp.json_or_text())
+    }
+
+    /// Cria a sub-revenda e aplica o vencimento inicial do painel.
+    ///
+    /// O `POST /revendas` do painel **nao** aceita vencimento; ele e gravado
+    /// pela rota `revendas/nota` logo depois. `dias_painel = 0` pula a etapa
+    /// (mesmo comportamento da UI). Se a criacao funcionar e o vencimento
+    /// falhar, a resposta volta com `vencimento_aplicado: false` e `aviso`
+    /// (a revenda **existe**).
+    pub async fn revendas_criar_com_vencimento(
+        &self,
+        body: Value,
+        dias_painel: u32,
+    ) -> Result<Value> {
+        let username = body
+            .get("username")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_string();
+
+        let criada = self.revendas_criar(body).await?;
+        let ok = criada.get("ok").and_then(Value::as_bool).unwrap_or(false);
+        if !ok {
+            return Ok(criada);
+        }
+        let username = criada
+            .get("username")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .or_else(|| {
+                criada
+                    .get("usuario_acesso")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .unwrap_or(username);
+        if dias_painel == 0 {
+            return Ok(criada);
+        }
+
+        let vencimento = vencimento_em_dias(dias_painel);
+        let nota = self
+            .revendas_nota(json!({ "username": username, "vencimento": vencimento }))
+            .await;
+
+        match nota {
+            Ok(resp) if resp.get("ok").and_then(Value::as_bool).unwrap_or(false) => {
+                let mut saida = criada;
+                if let Some(obj) = saida.as_object_mut() {
+                    obj.insert("vencimento_painel".to_string(), json!(vencimento));
+                    obj.insert("vencimento_aplicado".to_string(), json!(true));
+                }
+                Ok(saida)
+            }
+            Ok(resp) => Ok(com_aviso(
+                criada,
+                vencimento,
+                format!("revenda criada, mas o vencimento nao foi aplicado: {resp}"),
+            )),
+            Err(err) => Ok(com_aviso(
+                criada,
+                vencimento,
+                format!("revenda criada, mas o vencimento nao foi aplicado: {err}"),
+            )),
+        }
+    }
+
+    /// Edita uma sub-revenda existente (`PUT /merger/api/cliente/revendas`).
+    ///
+    /// Aceita um grupo por chamada, igual ao painel:
+    /// - acesso: `{id, usuario_acesso, password?}`
+    /// - senha: `{id, password}`
+    /// - permissoes: `{id, set_pode_criar_revenda?, set_pode_criar_ilimitado?, set_pode_conectar_whatsapp?}`
+    /// - creditos: `{id, transfer}` (minimo 10; debita do pai se ele nao for ilimitado)
+    pub async fn revendas_editar(&self, body: Value) -> Result<Value> {
+        let body = build_revenda_editar_body(&body)?;
+        self.send("PUT", ROTA_REVENDAS, &[], Some(&body), false)
+            .await
+            .map(|resp| resp.json_or_text())
+    }
+
+    /// Liga/desliga a revenda e toda a subarvore (`PATCH .../revendas`).
+    pub async fn revendas_toggle(&self, id: i64, enabled: bool) -> Result<Value> {
+        if id <= 0 {
+            return Err(ApiError::Config(
+                "informe o id da revenda (inteiro maior que zero)".into(),
+            ));
+        }
+        let body = json!({ "id": id, "enabled": if enabled { 1 } else { 0 } });
+        self.send("PATCH", ROTA_REVENDAS, &[], Some(&body), false)
+            .await
+            .map(|resp| resp.json_or_text())
+    }
+
+    /// Remove a revenda e toda a subarvore (`DELETE .../revendas?id=N`).
+    ///
+    /// **Destrutivo**: apaga as linhas Xtream da subarvore. Exige
+    /// `confirm = true`; a trava de exclusao do painel ainda pode recusar.
+    pub async fn revendas_remover(&self, id: i64, confirm: bool) -> Result<Value> {
+        if id <= 0 {
+            return Err(ApiError::Config(
+                "informe o id da revenda (inteiro maior que zero)".into(),
+            ));
+        }
+        let query = vec![("id".to_string(), id.to_string())];
+        self.send("DELETE", ROTA_REVENDAS, &query, None, confirm)
             .await
             .map(|resp| resp.json_or_text())
     }
@@ -155,6 +293,145 @@ impl MergerClient {
         .await
         .map(|resp| resp.json_or_text())
     }
+}
+
+/// Corpo de `POST /merger/api/cliente/revendas` (criacao).
+///
+/// Espelha as validacoes do handler Go: senha com no minimo 4 caracteres,
+/// minimo de 10 creditos quando a revenda nao e ilimitada e
+/// `pode_criar_ilimitado` forcado a 0 em revenda finita.
+pub fn build_revenda_nova_body(body: &Value) -> Result<Value> {
+    let obj = objeto(body)?;
+    let username = texto_obrigatorio(obj, "username")?;
+    let password = obj
+        .get("password")
+        .or_else(|| obj.get("senha"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    if password.chars().count() < 4 {
+        return Err(ApiError::Config(
+            "campo password obrigatorio (minimo 4 caracteres)".into(),
+        ));
+    }
+
+    let unlimited = flag_cero_um(obj, "unlimited")?.unwrap_or(0);
+    let credits = inteiro_opcional(obj, "credits")?.unwrap_or(0);
+    if unlimited == 0 && credits < 10 {
+        return Err(ApiError::Config(
+            "credits: minimo de 10 creditos para criar revenda limitada".into(),
+        ));
+    }
+    let pode_revenda = flag_cero_um(obj, "pode_criar_revenda")?.unwrap_or(1);
+    let mut pode_ilimitado = flag_cero_um(obj, "pode_criar_ilimitado")?.unwrap_or(0);
+    if unlimited != 1 {
+        pode_ilimitado = 0;
+    }
+    let pode_whatsapp = flag_cero_um(obj, "pode_conectar_whatsapp")?.unwrap_or(0);
+    let creditos_iniciais = if unlimited == 1 { 0 } else { credits };
+
+    Ok(json!({
+        "username": username,
+        "password": password,
+        "credits": creditos_iniciais,
+        "unlimited": unlimited,
+        "pode_criar_revenda": pode_revenda,
+        "pode_criar_ilimitado": pode_ilimitado,
+        "pode_conectar_whatsapp": pode_whatsapp,
+    }))
+}
+
+/// Corpo de `PUT /merger/api/cliente/revendas` (um grupo por chamada).
+pub fn build_revenda_editar_body(body: &Value) -> Result<Value> {
+    let obj = objeto(body)?;
+    let id = inteiro_positivo(obj, "id")?;
+
+    let acesso = texto_opcional(obj, "usuario_acesso")?;
+    let senha = texto_opcional(obj, "password")?;
+    let transfer = if obj.contains_key("transfer") {
+        inteiro_opcional(obj, "transfer")?
+    } else {
+        None
+    };
+    let mut flags = Map::new();
+    for campo in [
+        "set_pode_criar_revenda",
+        "set_pode_criar_ilimitado",
+        "set_pode_conectar_whatsapp",
+    ] {
+        if let Some(valor) = flag_cero_um(obj, campo)? {
+            flags.insert(campo.to_string(), json!(valor));
+        }
+    }
+
+    let grupos = [
+        acesso.is_some() || senha.is_some(),
+        transfer.is_some(),
+        !flags.is_empty(),
+    ]
+    .iter()
+    .filter(|presente| **presente)
+    .count();
+    if grupos == 0 {
+        return Err(ApiError::Config(
+            "informe um grupo: usuario_acesso (+password), password, transfer ou set_pode_*".into(),
+        ));
+    }
+    if grupos > 1 {
+        return Err(ApiError::Config(
+            "edite um grupo por chamada (acesso, senha, creditos ou permissoes)".into(),
+        ));
+    }
+    if acesso.is_some() && senha.is_none() && obj.contains_key("password") {
+        return Err(ApiError::Config("campo password deve ser string".into()));
+    }
+    if let Some(senha) = senha.as_deref() {
+        if senha.chars().count() < 4 {
+            return Err(ApiError::Config(
+                "campo password deve ter no minimo 4 caracteres".into(),
+            ));
+        }
+    }
+    if let Some(valor) = transfer {
+        if valor < 10 {
+            return Err(ApiError::Config(
+                "transfer: transferencia minima de 10 creditos".into(),
+            ));
+        }
+    }
+
+    let mut saida = Map::new();
+    saida.insert("id".to_string(), json!(id));
+    if let Some(valor) = acesso {
+        saida.insert("usuario_acesso".to_string(), json!(valor));
+    }
+    if let Some(valor) = senha {
+        saida.insert("password".to_string(), json!(valor));
+    }
+    if let Some(valor) = transfer {
+        saida.insert("transfer".to_string(), json!(valor));
+    }
+    for (campo, valor) in flags {
+        saida.insert(campo, valor);
+    }
+
+    Ok(Value::Object(saida))
+}
+
+/// Data `YYYY-MM-DD` daqui a `dias` (fuso local do processo).
+pub fn vencimento_em_dias(dias: u32) -> String {
+    (Local::now() + ChronoDuration::days(i64::from(dias)))
+        .format("%Y-%m-%d")
+        .to_string()
+}
+
+fn com_aviso(mut criada: Value, vencimento: String, aviso: String) -> Value {
+    if let Some(obj) = criada.as_object_mut() {
+        obj.insert("vencimento_painel".to_string(), json!(vencimento));
+        obj.insert("vencimento_aplicado".to_string(), json!(false));
+        obj.insert("aviso".to_string(), json!(aviso));
+    }
+    criada
 }
 
 /// Corpo de `POST /revendas/renovar` (o painel rejeita campos extras).
@@ -293,6 +570,26 @@ fn inteiro_opcional(obj: &Map<String, Value>, campo: &str) -> Result<Option<i64>
             .map(Some)
             .map_err(|_| ApiError::Config(format!("campo {campo} deve ser inteiro"))),
         Some(_) => Err(ApiError::Config(format!("campo {campo} deve ser inteiro"))),
+    }
+}
+
+/// Aceita `0`/`1` como numero, booleano ou string (`true`/`false`).
+fn flag_cero_um(obj: &Map<String, Value>, campo: &str) -> Result<Option<i64>> {
+    match obj.get(campo) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(valor)) => Ok(Some(if *valor { 1 } else { 0 })),
+        Some(Value::Number(numero)) => match numero.as_i64() {
+            Some(0) => Ok(Some(0)),
+            Some(1) => Ok(Some(1)),
+            _ => Err(ApiError::Config(format!("campo {campo} deve ser 0 ou 1"))),
+        },
+        Some(Value::String(texto)) => match texto.trim().to_ascii_lowercase().as_str() {
+            "" => Ok(None),
+            "0" | "false" => Ok(Some(0)),
+            "1" | "true" => Ok(Some(1)),
+            _ => Err(ApiError::Config(format!("campo {campo} deve ser 0 ou 1"))),
+        },
+        Some(_) => Err(ApiError::Config(format!("campo {campo} deve ser 0 ou 1"))),
     }
 }
 

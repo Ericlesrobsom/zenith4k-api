@@ -438,3 +438,72 @@ async fn tickets_novos_exigem_token() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---------------------------------------------------------------------------
+// Revendas: criacao/edicao/toggle/remocao
+// ---------------------------------------------------------------------------
+
+fn request(method: &str, uri: &str, token: Option<&str>, body: &str) -> Request<Body> {
+    let mut builder = Request::builder().uri(uri).method(method);
+    if let Some(token) = token {
+        builder = builder.header("authorization", format!("Bearer {token}"));
+    }
+    if !body.is_empty() {
+        builder = builder.header("content-type", "application/json");
+    }
+    builder
+        .body(if body.is_empty() {
+            Body::empty()
+        } else {
+            Body::from(body.to_string())
+        })
+        .expect("request de teste")
+}
+
+#[tokio::test]
+async fn remover_revenda_sem_confirm_devolve_409_sem_rede() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+    let req = request("DELETE", "/v1/revendas/remover?id=7", Some("tok"), "");
+    let (status, body) = send(router, req).await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "confirmacao_necessaria");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn criar_revenda_valida_dias_antes_da_rede() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+    let req = request(
+        "POST",
+        "/v1/revendas/criar",
+        Some("tok"),
+        r#"{"username":"nova","password":"1234","credits":10,"dias_painel":"trinta"}"#,
+    );
+    let (status, body) = send(router, req).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "requisicao_invalida");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn novas_rotas_de_revenda_exigem_token() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+    let casos = [
+        ("POST", "/v1/revendas/criar"),
+        ("PUT", "/v1/revendas/editar"),
+        ("PATCH", "/v1/revendas/toggle"),
+        ("DELETE", "/v1/revendas/remover?id=7"),
+    ];
+    for (metodo, uri) in casos {
+        let req = request(metodo, uri, None, r#"{"id":1}"#);
+        let (status, body) = send(router.clone(), req).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{metodo} {uri}");
+        assert_eq!(body["ok"], false, "{metodo} {uri}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
