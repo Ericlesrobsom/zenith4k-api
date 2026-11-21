@@ -56,6 +56,27 @@ cargo run -p merger-cli -- usuarios -q search=maria -q status=ativo
 cargo run -p merger-cli -- stats
 ```
 
+## Validar no painel real
+
+1. Preencha `.env` (`ZENITH_URL`, `ZENITH_USER`, `ZENITH_PASS`).
+2. Rode o smoke test **somente leitura**:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke-live.ps1
+```
+
+O script faz login, consulta identidade, revendas, usuarios, planos, creditos,
+pedidos, reportes, avisos, stats e dashboard. Nao cria, edita nem apaga nada e
+nao imprime a senha.
+
+Para testar sem o painel real, suba o painel falso e use as credenciais
+`teste`/`teste`:
+
+```bash
+node scripts/fake-panel.mjs 18999
+# em outro terminal, com ZENITH_URL=http://127.0.0.1:18999
+```
+
 ## Variaveis de ambiente
 
 | Variavel | Obrigatoria | Default | Uso |
