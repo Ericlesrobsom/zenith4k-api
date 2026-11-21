@@ -28,6 +28,14 @@ use crate::error::{ApiError, Result};
 /// Rota da colecao de revendas: lista (GET), cria (POST), edita (PUT),
 /// liga/desliga (PATCH) e remove (DELETE).
 pub const ROTA_REVENDAS: &str = "/merger/api/cliente/revendas";
+/// Link de auto-cadastro da revenda (GET gera lazy; POST regenera).
+pub const ROTA_CONVITE: &str = "/merger/api/cliente/convite";
+pub const ROTA_CONVITE_REGENERAR: &str = "/merger/api/cliente/convite/regenerar";
+/// Adesoes manuais de mensalistas feitas pelo convite.
+pub const ROTA_CONVITE_ADESAO_PENDENTES: &str = "/merger/api/cliente/convite/adesao/pendentes";
+pub const ROTA_CONVITE_ADESAO_CONFIRMAR: &str = "/merger/api/cliente/convite/adesao/confirmar";
+/// Oferta de mensalista no convite (GET/POST).
+pub const ROTA_CONVITE_MENSALISTA_CONFIG: &str = "/merger/api/cliente/convite/mensalista-config";
 
 impl MergerClient {
     /// Lista as revendas visiveis para a franquia autenticada.
@@ -167,6 +175,74 @@ impl MergerClient {
         self.send("DELETE", ROTA_REVENDAS, &query, None, confirm)
             .await
             .map(|resp| resp.json_or_text())
+    }
+
+    /// Le o link de auto-cadastro (gera o codigo na primeira chamada).
+    pub async fn convite(&self) -> Result<Value> {
+        self.send("GET", ROTA_CONVITE, &[], None, false)
+            .await
+            .map(|resp| resp.json_or_text())
+    }
+
+    /// Regenera o codigo do convite; o link antigo morre na hora.
+    pub async fn convite_regenerar(&self) -> Result<Value> {
+        self.send("POST", ROTA_CONVITE_REGENERAR, &[], None, false)
+            .await
+            .map(|resp| resp.json_or_text())
+    }
+
+    /// Lista adesoes manuais pendentes de mensalistas vindas do convite.
+    pub async fn convite_adesao_pendentes(&self) -> Result<Value> {
+        self.send("GET", ROTA_CONVITE_ADESAO_PENDENTES, &[], None, false)
+            .await
+            .map(|resp| resp.json_or_text())
+    }
+
+    /// Confirma o recebimento de uma adesao manual (`{pedido_id}`).
+    pub async fn convite_adesao_confirmar(&self, pedido_id: &str) -> Result<Value> {
+        let pedido_id = pedido_id.trim();
+        if pedido_id.is_empty() {
+            return Err(ApiError::Config(
+                "informe o pedido_id da adesao a confirmar".into(),
+            ));
+        }
+        let body = json!({ "pedido_id": pedido_id });
+        self.send(
+            "POST",
+            ROTA_CONVITE_ADESAO_CONFIRMAR,
+            &[],
+            Some(&body),
+            false,
+        )
+        .await
+        .map(|resp| resp.json_or_text())
+    }
+
+    /// Le a configuracao da oferta de mensalista no convite.
+    pub async fn convite_mensalista_config(&self) -> Result<Value> {
+        self.send("GET", ROTA_CONVITE_MENSALISTA_CONFIG, &[], None, false)
+            .await
+            .map(|resp| resp.json_or_text())
+    }
+
+    /// Salva a configuracao da oferta de mensalista no convite.
+    ///
+    /// Corpo: `{"habilitado": bool, "curva": {"tarifas_centavos": [..]}}`.
+    pub async fn convite_mensalista_config_salvar(&self, body: Value) -> Result<Value> {
+        if !body.is_object() {
+            return Err(ApiError::Config(
+                "corpo da configuracao precisa ser um objeto JSON".into(),
+            ));
+        }
+        self.send(
+            "POST",
+            ROTA_CONVITE_MENSALISTA_CONFIG,
+            &[],
+            Some(&body),
+            false,
+        )
+        .await
+        .map(|resp| resp.json_or_text())
     }
 
     /// Arvore hierarquica de revendas (com contagens agregadas por nivel).

@@ -77,6 +77,13 @@ Todas as rotas `/v1/*` exigem `Authorization: Bearer $ZENITH_API_TOKEN`.
 | editar revenda | `PUT /v1/revendas/editar` | acesso, senha, permissoes ou creditos |
 | toggle revenda | `PATCH /v1/revendas/toggle` | liga/desliga revenda + subarvore |
 | remover revenda | `DELETE /v1/revendas/remover?id=N&confirm=true` | **destrutivo** |
+| transferir revenda | `POST /v1/revendas/transferir` | muda o pai (`origem`, `novo_pai`) |
+| destinos | `GET /v1/revendas/transferir/destinos?origem=USER` | pais possiveis para mover |
+| convite | `GET /v1/revendas/convite` | link de auto-cadastro |
+| convite regenerar | `POST /v1/revendas/convite/regenerar` | invalida o link atual |
+| adesoes pendentes | `GET /v1/revendas/convite/adesao/pendentes` | mensalistas com adesao manual |
+| adesao confirmar | `POST /v1/revendas/convite/adesao/confirmar` | `{pedido_id}` |
+| convite config | `GET/POST /v1/revendas/convite/mensalista-config` | oferta de mensalista |
 | arvore | `GET /v1/revendas/arvore` | hierarquia completa |
 | renovar revenda | `POST /v1/revendas/renovar` | +30 dias manuais |
 | nota revenda | `POST /v1/revendas/nota` | contato/observacoes |
@@ -151,6 +158,15 @@ Respostas uteis:
 - `401` `codigo_2fa_invalido`: codigo errado/expirado; peca outro.
 - `401` `login_recusado`: credenciais invalidas ou painel vencido.
 - `429` `rate_limit`: o painel limita tentativas (10/min por IP).
+
+### Convite x adesao
+
+- **Convite de revenda** (`/v1/revendas/convite`): link publico
+  `/cadastro/<codigo>`; quem se cadastra nasce **ativo com 0 creditos**.
+  Nao ha aprovacao pendente. `POST .../regenerar` invalida o link anterior.
+- **Adesao de mensalista** (`.../adesao/*` e `.../mensalista-config`):
+  outro fluxo, de pagamento manual. `pendentes` lista pedidos;
+  `confirmar` recebe `{pedido_id}` e registra o recebimento (confira antes).
 
 ### Criar uma revenda
 

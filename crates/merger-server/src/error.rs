@@ -49,7 +49,9 @@ impl From<ApiError> for AppError {
             ApiError::Panel { .. } => (StatusCode::BAD_GATEWAY, "erro_painel"),
             ApiError::Http(_) => (StatusCode::BAD_GATEWAY, "erro_rede"),
             ApiError::NotImplemented(_) => (StatusCode::NOT_IMPLEMENTED, "nao_implementado"),
-            ApiError::Config(_) => (StatusCode::INTERNAL_SERVER_ERROR, "configuracao_invalida"),
+            // Nos handlers, `Config` vem dos builders de validacao (corpo do
+            // chamador), nao de erro interno: 400 e o status fiel.
+            ApiError::Config(_) => (StatusCode::BAD_REQUEST, "parametros_invalidos"),
             ApiError::Json(_) => (StatusCode::INTERNAL_SERVER_ERROR, "json_invalido"),
             ApiError::Url(_) => (StatusCode::INTERNAL_SERVER_ERROR, "url_invalida"),
         };

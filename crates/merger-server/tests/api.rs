@@ -113,6 +113,11 @@ async fn mapeamento_de_erros_do_painel_para_http() {
             "caminho_nao_permitido",
         ),
         (
+            ApiError::Config("corpo invalido".into()),
+            400,
+            "parametros_invalidos",
+        ),
+        (
             ApiError::Panel {
                 status: 500,
                 body: "x".into(),
@@ -501,6 +506,70 @@ async fn novas_rotas_de_revenda_exigem_token() {
     ];
     for (metodo, uri) in casos {
         let req = request(metodo, uri, None, r#"{"id":1}"#);
+        let (status, body) = send(router.clone(), req).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{metodo} {uri}");
+        assert_eq!(body["ok"], false, "{metodo} {uri}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------------------
+// Transferencia e convite/adesao
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn transferir_destinos_exige_origem_sem_rede() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+    let req = request("GET", "/v1/revendas/transferir/destinos", Some("tok"), "");
+    let (status, body) = send(router, req).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "requisicao_invalida");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn transferir_valida_corpo_sem_rede() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+    let req = request("POST", "/v1/revendas/transferir", Some("tok"), "{}");
+    let (status, body) = send(router, req).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "parametros_invalidos");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn convite_confirmar_exige_pedido_id() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+    let req = request(
+        "POST",
+        "/v1/revendas/convite/adesao/confirmar",
+        Some("tok"),
+        "{}",
+    );
+    let (status, body) = send(router, req).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "requisicao_invalida");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn rotas_de_convite_exigem_token() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+    let casos = [
+        ("GET", "/v1/revendas/convite"),
+        ("POST", "/v1/revendas/convite/regenerar"),
+        ("GET", "/v1/revendas/convite/adesao/pendentes"),
+        ("GET", "/v1/revendas/convite/mensalista-config"),
+    ];
+    for (metodo, uri) in casos {
+        let req = request(metodo, uri, None, "");
         let (status, body) = send(router.clone(), req).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{metodo} {uri}");
         assert_eq!(body["ok"], false, "{metodo} {uri}");

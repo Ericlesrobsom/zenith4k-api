@@ -36,6 +36,28 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/revendas/editar", put(routes::revendas_editar))
         .route("/v1/revendas/toggle", patch(routes::revendas_toggle))
         .route("/v1/revendas/remover", delete(routes::revendas_remover))
+        .route(
+            "/v1/revendas/transferir/destinos",
+            get(routes::revendas_transferir_destinos),
+        )
+        .route("/v1/revendas/transferir", post(routes::revendas_transferir))
+        .route("/v1/revendas/convite", get(routes::revendas_convite))
+        .route(
+            "/v1/revendas/convite/regenerar",
+            post(routes::revendas_convite_regenerar),
+        )
+        .route(
+            "/v1/revendas/convite/adesao/pendentes",
+            get(routes::revendas_convite_adesao_pendentes),
+        )
+        .route(
+            "/v1/revendas/convite/adesao/confirmar",
+            post(routes::revendas_convite_adesao_confirmar),
+        )
+        .route(
+            "/v1/revendas/convite/mensalista-config",
+            get(routes::revendas_convite_config).post(routes::revendas_convite_config_salvar),
+        )
         .route("/v1/revendas/arvore", get(routes::revendas_arvore))
         .route("/v1/revendas/renovar", post(routes::revendas_renovar))
         .route("/v1/revendas/nota", post(routes::revendas_nota))

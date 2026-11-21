@@ -172,6 +172,91 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ok: true });
   }
 
+  if (path === "/merger/api/cliente/revendas/renovar" && method === "POST") {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    const alvo = revendas.find((r) => r.id === Number(body.id));
+    if (!alvo) return json(res, 200, { ok: false, erro: "Revenda nao encontrada" });
+    return json(res, 200, {
+      ok: true,
+      id: alvo.id,
+      username: alvo.username,
+      vencimento_painel: "2027-01-20",
+      ultima_renovacao_manual: Math.floor(Date.now() / 1000),
+    });
+  }
+
+  if (path === "/merger/api/cliente/revenda_unlimited" && method === "POST") {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    const alvo = revendas.find((r) => r.id === Number(body.id));
+    if (!alvo) return json(res, 200, { ok: false, erro: "Revenda nao encontrada" });
+    alvo.unlimited = Number(body.novo_estado) === 1 ? 1 : 0;
+    return json(res, 200, { ok: true, unlimited: alvo.unlimited });
+  }
+
+  if (path === "/merger/api/cliente/transfer_revenda/destinos" && method === "GET") {
+    return json(res, 200, { destinos: revendas.map((r) => r.username) });
+  }
+
+  if (path === "/merger/api/cliente/transfer_revenda" && method === "POST") {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    if (!body.origem || !body.novo_pai) {
+      return json(res, 400, { erro: "origem_novo_pai_obrigatorios" });
+    }
+    return json(res, 200, { ok: true, origem: body.origem, novo_pai: body.novo_pai });
+  }
+
+  if (path === "/merger/api/cliente/convite" && method === "GET") {
+    return json(res, 200, {
+      ok: true,
+      codigo: "convite-fake",
+      link: "http://127.0.0.1:18999/cadastro/convite-fake",
+    });
+  }
+
+  if (path === "/merger/api/cliente/convite/regenerar" && method === "POST") {
+    return json(res, 200, {
+      ok: true,
+      codigo: "convite-novo",
+      link: "http://127.0.0.1:18999/cadastro/convite-novo",
+    });
+  }
+
+  if (path === "/merger/api/cliente/convite/adesao/pendentes" && method === "GET") {
+    return json(res, 200, {
+      ok: true,
+      pedidos: [
+        {
+          pedido_id: "pedido-1",
+          mensalista_user: "mensalista1",
+          valor_centavos: 10000,
+          criado_em: 1700000000,
+        },
+      ],
+    });
+  }
+
+  if (path === "/merger/api/cliente/convite/adesao/confirmar" && method === "POST") {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    if (!body.pedido_id) {
+      return json(res, 400, { ok: false, erro: "pedido obrigatório" });
+    }
+    return json(res, 200, { ok: true, pedido_id: body.pedido_id, status: "CONFIRMADO" });
+  }
+
+  if (path === "/merger/api/cliente/convite/mensalista-config") {
+    if (method === "GET") {
+      return json(res, 200, {
+        ok: true,
+        config: { habilitado: false, curva: { tarifas_centavos: [] } },
+        piso: [500, 400],
+        aviso: "",
+        apto_novos_cadastros: false,
+      });
+    }
+    const body = JSON.parse((await readBody(req)) || "{}");
+    return json(res, 200, { ok: true, config: body });
+  }
+
   if (path === "/merger/api/cliente/revendas/nota" && method === "POST") {
     const body = JSON.parse((await readBody(req)) || "{}");
     const alvo = revendas.find(

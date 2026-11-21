@@ -309,6 +309,134 @@ paths:
           $ref: '#/components/responses/ConflitoConfirmacao'
         '502':
           $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/transferir/destinos:
+    get:
+      operationId: destinosTransferencia
+      tags: [revendas]
+      summary: Pais possiveis para transferir uma revenda
+      parameters:
+        - name: origem
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/transferir:
+    post:
+      operationId: transferirRevenda
+      tags: [revendas]
+      summary: Move a revenda para outro pai
+      description: Operacao estrutural; confirme o destino antes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferirRevenda'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/convite:
+    get:
+      operationId: linkConvite
+      tags: [revendas]
+      summary: Link de auto-cadastro da franquia
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/convite/regenerar:
+    post:
+      operationId: regenerarConvite
+      tags: [revendas]
+      summary: Invalida o link de convite atual
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/convite/adesao/pendentes:
+    get:
+      operationId: adesoesPendentes
+      tags: [revendas]
+      summary: Adesoes manuais de mensalistas pendentes
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/convite/adesao/confirmar:
+    post:
+      operationId: confirmarAdesao
+      tags: [revendas]
+      summary: Registra o recebimento de uma adesao manual
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdesaoConfirmar'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/revendas/convite/mensalista-config:
+    get:
+      operationId: lerConviteMensalista
+      tags: [revendas]
+      summary: Le a oferta de mensalista no convite
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+    post:
+      operationId: salvarConviteMensalista
+      tags: [revendas]
+      summary: Salva a oferta de mensalista no convite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConviteMensalistaConfig'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
   /v1/revendas/arvore:
     get:
       operationId: arvoreRevendas
@@ -1207,6 +1335,36 @@ components:
         set_pode_conectar_whatsapp:
           type: integer
           enum: [0, 1]
+    TransferirRevenda:
+      type: object
+      required: [origem, novo_pai]
+      properties:
+        origem:
+          type: string
+        novo_pai:
+          type: string
+        confirmar_cross:
+          type: boolean
+          default: false
+    AdesaoConfirmar:
+      type: object
+      required: [pedido_id]
+      properties:
+        pedido_id:
+          type: string
+    ConviteMensalistaConfig:
+      type: object
+      required: [habilitado]
+      properties:
+        habilitado:
+          type: boolean
+        curva:
+          type: object
+          properties:
+            tarifas_centavos:
+              type: array
+              items:
+                type: integer
     RevendaToggle:
       type: object
       required: [id, enabled]

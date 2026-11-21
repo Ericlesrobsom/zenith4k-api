@@ -125,6 +125,61 @@ enum Command {
         #[arg(long)]
         confirm: bool,
     },
+    /// Renova o painel da revenda por +30 dias (sem cobranca).
+    RevendasRenovar {
+        /// ID da revenda.
+        id: i64,
+        /// Vencimento atual exibido na lista (YYYY-MM-DD). Omita para pular
+        /// a conferencia.
+        #[arg(long)]
+        vencimento_atual: Option<String>,
+    },
+    /// Grava nota/contato/vencimento na revenda.
+    RevendasNota {
+        #[arg(long, conflicts_with = "file")]
+        json: Option<String>,
+        #[arg(long, value_name = "caminho", conflicts_with = "json")]
+        file: Option<PathBuf>,
+    },
+    /// Liga/desliga o modo ilimitado da revenda.
+    RevendasUnlimited {
+        #[arg(long, conflicts_with = "file")]
+        json: Option<String>,
+        #[arg(long, value_name = "caminho", conflicts_with = "json")]
+        file: Option<PathBuf>,
+    },
+    /// Transfere a revenda para outro pai.
+    RevendasTransferir {
+        #[arg(long, conflicts_with = "file")]
+        json: Option<String>,
+        #[arg(long, value_name = "caminho", conflicts_with = "json")]
+        file: Option<PathBuf>,
+    },
+    /// Lista os pais possiveis para transferir a revenda.
+    RevendasTransferirDestinos {
+        /// Username da revenda a mover.
+        origem: String,
+    },
+    /// Mostra o link de auto-cadastro (ou regenera com --regenerar).
+    RevendasConvite {
+        /// Invalida o link atual e gera outro.
+        #[arg(long)]
+        regenerar: bool,
+    },
+    /// Lista adesoes manuais pendentes do convite.
+    RevendasConvitePendentes,
+    /// Confirma o recebimento de uma adesao manual.
+    RevendasConviteConfirmar {
+        /// ID do pedido de adesao.
+        pedido_id: String,
+    },
+    /// Le (sem --json) ou salva a oferta de mensalista do convite.
+    RevendasConviteConfig {
+        #[arg(long, conflicts_with = "file")]
+        json: Option<String>,
+        #[arg(long, value_name = "caminho", conflicts_with = "json")]
+        file: Option<PathBuf>,
+    },
     /// Lista/busca clientes finais.
     Usuarios {
         #[command(flatten)]
@@ -291,6 +346,71 @@ async fn main() -> Result<()> {
             }
             client.ensure_login().await?;
             let resposta = client.revendas_remover(id, confirm).await?;
+            print_json(&resposta)?;
+        }
+        Command::RevendasRenovar {
+            id,
+            vencimento_atual,
+        } => {
+            client.ensure_login().await?;
+            let resposta = client
+                .revendas_renovar(serde_json::json!({
+                    "id": id,
+                    "vencimento_atual": vencimento_atual.unwrap_or_default(),
+                }))
+                .await?;
+            print_json(&resposta)?;
+        }
+        Command::RevendasNota { json, file } => {
+            let body = read_json_arg(json, file)?;
+            client.ensure_login().await?;
+            let resposta = client.revendas_nota(body).await?;
+            print_json(&resposta)?;
+        }
+        Command::RevendasUnlimited { json, file } => {
+            let body = read_json_arg(json, file)?;
+            client.ensure_login().await?;
+            let resposta = client.revenda_unlimited(body).await?;
+            print_json(&resposta)?;
+        }
+        Command::RevendasTransferir { json, file } => {
+            let body = read_json_arg(json, file)?;
+            client.ensure_login().await?;
+            let resposta = client.transfer_revenda(body).await?;
+            print_json(&resposta)?;
+        }
+        Command::RevendasTransferirDestinos { origem } => {
+            client.ensure_login().await?;
+            let resposta = client.transfer_revenda_destinos(&origem).await?;
+            print_json(&resposta)?;
+        }
+        Command::RevendasConvite { regenerar } => {
+            client.ensure_login().await?;
+            let resposta = if regenerar {
+                client.convite_regenerar().await?
+            } else {
+                client.convite().await?
+            };
+            print_json(&resposta)?;
+        }
+        Command::RevendasConvitePendentes => {
+            client.ensure_login().await?;
+            let resposta = client.convite_adesao_pendentes().await?;
+            print_json(&resposta)?;
+        }
+        Command::RevendasConviteConfirmar { pedido_id } => {
+            client.ensure_login().await?;
+            let resposta = client.convite_adesao_confirmar(&pedido_id).await?;
+            print_json(&resposta)?;
+        }
+        Command::RevendasConviteConfig { json, file } => {
+            client.ensure_login().await?;
+            let resposta = if json.is_none() && file.is_none() {
+                client.convite_mensalista_config().await?
+            } else {
+                let body = read_json_arg(json, file)?;
+                client.convite_mensalista_config_salvar(body).await?
+            };
             print_json(&resposta)?;
         }
         Command::Usuarios { list } => {

@@ -536,3 +536,25 @@ async fn toggle_e_remocao_validam_id_antes_da_rede() {
         .expect_err("id invalido");
     assert!(matches!(erro, ApiError::Config(_)));
 }
+
+// ---------------------------------------------------------------------------
+// Convite / adesao
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn confirmar_adesao_exige_pedido_id_sem_rede() {
+    let erro = cliente()
+        .convite_adesao_confirmar("  ")
+        .await
+        .expect_err("pedido vazio");
+    assert!(matches!(erro, ApiError::Config(_)));
+}
+
+#[tokio::test]
+async fn config_do_convite_exige_objeto_sem_rede() {
+    let erro = cliente()
+        .convite_mensalista_config_salvar(json!(["nao", "e", "objeto"]))
+        .await
+        .expect_err("corpo invalido");
+    assert!(matches!(erro, ApiError::Config(_)));
+}

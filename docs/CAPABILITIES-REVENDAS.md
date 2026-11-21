@@ -54,6 +54,14 @@ autenticado `MergerClient::send`, que aplica allowlist de rota e a trava de
 | `revendas_remover` | `DELETE /merger/api/cliente/revendas?id=N` | `confirm=true` | `{ok, removidos, linhas_apagadas}` |
 | `revendas_tree` | `GET /merger/api/cliente/revendas/arvore` | — | array hierarquico (`sub_revendas`) |
 | `revendas_renovar` | `POST /merger/api/cliente/revendas/renovar` | `{id, vencimento_atual}` | `{ok, id, username, vencimento_painel, ultima_renovacao_manual}` |
+| `transfer_revenda_destinos` | `GET /merger/api/cliente/transfer_revenda/destinos` | `origem` | lista de pais possiveis |
+| `transfer_revenda` | `POST /merger/api/cliente/transfer_revenda` | `{origem, novo_pai, confirmar_cross?}` | `{ok}` |
+| `convite` | `GET /merger/api/cliente/convite` | — | `{ok, codigo, link}` |
+| `convite_regenerar` | `POST /merger/api/cliente/convite/regenerar` | — | `{ok, codigo, link}` |
+| `convite_adesao_pendentes` | `GET /merger/api/cliente/convite/adesao/pendentes` | — | `{ok, pedidos}` |
+| `convite_adesao_confirmar` | `POST /merger/api/cliente/convite/adesao/confirmar` | `{pedido_id}` | resposta da adesao |
+| `convite_mensalista_config` | `GET /merger/api/cliente/convite/mensalista-config` | — | `{ok, config, piso, ...}` |
+| `convite_mensalista_config_salvar` | `POST` idem | `{habilitado, curva?}` | `{ok}` |
 | `revendas_nota_ler` | `GET /merger/api/cliente/revendas/nota?id=` | query `id` | `{ok, username, contato_*, vencimento}` |
 | `revendas_nota` | `POST /merger/api/cliente/revendas/nota` | `{id? ou username?, contato_*?, vencimento?}` | `{ok, ...}` |
 | `revenda_unlimited` | `POST /merger/api/cliente/revenda_unlimited` | `{id, novo_estado, saldo_rebaixamento?}` | `{ok, ...}` |
@@ -230,6 +238,33 @@ let resposta = client
 > para outra descarta recursos de marca/operacao (loja, WhatsApp, IA,
 > Telegram, cupons). O painel nao pede `confirm`; a checagem e apenas de
 > permissao (franquia raiz). Trate como irreversivel e audite fora do cliente.
+
+### Convite de revenda e adesao de mensalista
+
+Sao **dois fluxos diferentes**, ambos no escopo da franquia:
+
+| Fluxo | Rotas | Efeito |
+|---|---|---|
+| Convite de revenda | `GET /cliente/convite`, `POST /cliente/convite/regenerar` | link publico `/cadastro/<codigo>`; o cadastro cria a sub-revenda **ativa com 0 creditos** sob a franquia, sem debitar o pai |
+| Adesao de mensalista | `GET/POST /cliente/convite/mensalista-config`, `GET /cliente/convite/adesao/pendentes`, `POST /cliente/convite/adesao/confirmar` | oferta de mensalista no convite; a confirmacao registra o recebimento manual de uma adesao |
+
+```rust
+let link = client.convite().await?;          // {"ok":true,"link":"https://.../cadastro/..."}
+let novo = client.convite_regenerar().await?; // invalida o link anterior
+
+let pendentes = client.convite_adesao_pendentes().await?;
+if let Some(pedido) = pendentes["pedidos"].as_array().and_then(|p| p.first()) {
+    let id = pedido["pedido_id"].as_str().unwrap_or_default();
+    client.convite_adesao_confirmar(id).await?;
+}
+```
+
+> O convite de revenda **nao tem aprovacao pendente**: quem se cadastra pelo
+> link ja nasce ativo. `adesao/pendentes` pertence ao fluxo de **mensalista**
+> (pagamento manual), nao ao convite de revenda.
+>
+> `convite_adesao_confirmar` registra um recebimento. Confirme apenas depois
+> de conferir o pagamento; a operacao e auditada no painel.
 
 ## Usuarios / clientes finais
 

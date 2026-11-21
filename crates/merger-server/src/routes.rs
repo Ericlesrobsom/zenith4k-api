@@ -747,6 +747,123 @@ pub async fn upload(
 }
 
 // ---------------------------------------------------------------------------
+// Revendas: transferencia e convite/adesao
+// ---------------------------------------------------------------------------
+
+/// Repete a chamada uma vez depois do login quando o painel responde 401.
+macro_rules! login_retry {
+    ($st:expr, $expr:expr) => {{
+        match $expr.await {
+            Err(ApiError::SessionExpired) | Err(ApiError::NotAuthenticated) => {
+                $st.ensure_login().await?;
+                $expr.await
+            }
+            outro => outro,
+        }
+    }};
+}
+
+/// Query de `GET /v1/revendas/transferir/destinos`.
+#[derive(Debug, Deserialize)]
+pub struct TransferirDestinosQuery {
+    pub origem: Option<String>,
+}
+
+/// `GET /v1/revendas/transferir/destinos?origem=USER` — pais possiveis.
+pub async fn revendas_transferir_destinos(
+    State(st): State<AppState>,
+    RawQuery(query): RawQuery,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let origem = query
+        .as_deref()
+        .and_then(|raw| {
+            url::form_urlencoded::parse(raw.as_bytes())
+                .find(|(chave, _)| chave == "origem")
+                .map(|(_, valor)| valor.trim().to_string())
+        })
+        .filter(|valor| !valor.is_empty())
+        .ok_or_else(|| AppError::bad_request("query origem e obrigatoria"))?;
+
+    let data =
+        login_retry!(st, st.client.transfer_revenda_destinos(&origem)).map_err(AppError::from)?;
+    Ok(success(started, data))
+}
+
+/// `POST /v1/revendas/transferir` — move a revenda para outro pai.
+pub async fn revendas_transferir(
+    State(st): State<AppState>,
+    ApiJson(body): ApiJson<Value>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data =
+        login_retry!(st, st.client.transfer_revenda(body.clone())).map_err(AppError::from)?;
+    Ok(success(started, data))
+}
+
+/// `GET /v1/revendas/convite` — link de auto-cadastro da franquia.
+pub async fn revendas_convite(State(st): State<AppState>) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data = login_retry!(st, st.client.convite()).map_err(AppError::from)?;
+    Ok(success(started, data))
+}
+
+/// `POST /v1/revendas/convite/regenerar` — invalida o link antigo.
+pub async fn revendas_convite_regenerar(
+    State(st): State<AppState>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data = login_retry!(st, st.client.convite_regenerar()).map_err(AppError::from)?;
+    Ok(success(started, data))
+}
+
+/// `GET /v1/revendas/convite/adesao/pendentes` — adesoes manuais pendentes.
+pub async fn revendas_convite_adesao_pendentes(
+    State(st): State<AppState>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data = login_retry!(st, st.client.convite_adesao_pendentes()).map_err(AppError::from)?;
+    Ok(success(started, data))
+}
+
+/// `POST /v1/revendas/convite/adesao/confirmar` — confirma o recebimento.
+pub async fn revendas_convite_adesao_confirmar(
+    State(st): State<AppState>,
+    ApiJson(body): ApiJson<Value>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let pedido_id = body
+        .get("pedido_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|valor| !valor.is_empty())
+        .ok_or_else(|| AppError::bad_request("campo pedido_id e obrigatorio"))?
+        .to_string();
+
+    let data =
+        login_retry!(st, st.client.convite_adesao_confirmar(&pedido_id)).map_err(AppError::from)?;
+    Ok(success(started, data))
+}
+
+/// `GET /v1/revendas/convite/mensalista-config` — oferta de mensalista.
+pub async fn revendas_convite_config(State(st): State<AppState>) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data = login_retry!(st, st.client.convite_mensalista_config()).map_err(AppError::from)?;
+    Ok(success(started, data))
+}
+
+/// `POST /v1/revendas/convite/mensalista-config` — salva a oferta.
+pub async fn revendas_convite_config_salvar(
+    State(st): State<AppState>,
+    ApiJson(body): ApiJson<Value>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data = login_retry!(st, st.client.convite_mensalista_config_salvar(body.clone()))
+        .map_err(AppError::from)?;
+    Ok(success(started, data))
+}
+
+// ---------------------------------------------------------------------------
 // Fallbacks
 // ---------------------------------------------------------------------------
 

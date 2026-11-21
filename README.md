@@ -177,6 +177,22 @@ cargo run -p merger-cli -- call --json '{"method":"GET","path":"/merger/api/cate
 cargo run -p merger-cli -- login --codigo 123456
 ```
 
+Revendas (paridade com o menu "Acoes"):
+
+```bash
+cargo run -p merger-cli -- revendas
+cargo run -p merger-cli -- revendas-criar --json '{"username":"revenda_x","password":"senha-forte","credits":100}' --dias 30
+cargo run -p merger-cli -- revendas-editar --json '{"id":7,"transfer":50}'
+cargo run -p merger-cli -- revendas-toggle 7 --disable
+cargo run -p merger-cli -- revendas-renovar 7
+cargo run -p merger-cli -- revendas-nota --json '{"id":7,"contato_nome":"Fulano"}'
+cargo run -p merger-cli -- revendas-unlimited --json '{"id":7,"novo_estado":1}'
+cargo run -p merger-cli -- revendas-remover 7 --confirm
+cargo run -p merger-cli -- revendas-transferir-destinos sub01
+cargo run -p merger-cli -- revendas-convite
+cargo run -p merger-cli -- revendas-convite-pendentes
+```
+
 `post`/`call` aceitam `--file caminho.json` no lugar de `--json`, e `--confirm`
 para liberar operacoes destrutivas. A saida e JSON pretty no stdout; logs vao
 para o stderr.
