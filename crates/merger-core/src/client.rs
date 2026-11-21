@@ -28,6 +28,8 @@ pub struct MergerClient {
     cfg: ClientConfig,
     http: Client,
     state: RwLock<SessionState>,
+    /// Serializa `ensure_login` para nao gastar duas tentativas no rate limit.
+    login_lock: tokio::sync::Mutex<()>,
 }
 
 const ALLOWED_PREFIXES: [&str; 3] = ["/merger/api/", "/api/webhook/", "/api/mcp"];
@@ -62,6 +64,7 @@ impl MergerClient {
             cfg,
             http,
             state: RwLock::new(SessionState::default()),
+            login_lock: tokio::sync::Mutex::new(()),
         })
     }
 
@@ -83,6 +86,11 @@ impl MergerClient {
             .read()
             .expect("session lock envenenado")
             .authenticated
+    }
+
+    /// Lock usado por `ensure_login` para evitar logins concorrentes.
+    pub(crate) fn login_lock(&self) -> &tokio::sync::Mutex<()> {
+        &self.login_lock
     }
 
     pub(crate) fn mark_authenticated(&self, whoami: Value) {

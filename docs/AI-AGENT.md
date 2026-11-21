@@ -284,8 +284,10 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   "$BASE/v1/tickets/responder"
 ```
 
-As rotas JSON de ticket nao carregam anexo. Para anexar arquivo, use
-`POST /v1/upload` (secao "Uploads (multipart)").
+As rotas JSON de ticket usam a visao **cliente** do painel. Com
+`ZENITH_ROLE=admin`, use `POST /v1/upload` apontando para
+`/merger/api/admin/tickets/responder` (multipart). Para anexar arquivo na
+visao cliente, use `POST /v1/upload` (secao "Uploads (multipart)").
 
 ### Passthrough (`/v1/raw`)
 

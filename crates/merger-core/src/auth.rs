@@ -352,6 +352,9 @@ impl MergerClient {
     /// refaz o login. Um desafio 2FA vira [`ApiError::TwoFactorRequired`] — o
     /// chamador precisa resolver o codigo via [`MergerClient::login_with_code`].
     pub async fn ensure_login(&self) -> Result<()> {
+        // Um login por vez: chamadas concorrentes no boot nao podem consumir
+        // duas tentativas do limite de 10/min do painel.
+        let _guard = self.login_lock().lock().await;
         let sess = self.session();
         if sess.authenticated {
             let recente = sess

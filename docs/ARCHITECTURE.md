@@ -215,4 +215,6 @@ operador (o diretorio `audit/` e ignorado pelo Git).
   `Accept: application/yaml` ou um parser YAML.
 - O upload multipart (`/v1/upload`) tem limite de 25 MB por arquivo e tambem
   respeita allowlist e `confirm`.
+- `/v1/tickets/criar` e `/v1/tickets/responder` usam a visao cliente; em
+  `ZENITH_ROLE=admin`, use `/v1/upload` na rota admin equivalente.
 - Nao ha paginacao propria: offset/limit/page seguem o painel.
