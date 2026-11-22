@@ -78,8 +78,9 @@ uma tag `v*` e enviada (ou por `workflow_dispatch`):
 docker pull ghcr.io/ericlesrobsom/zenith4k-api:0.1.0
 ```
 
-O pacote herda a visibilidade do repositorio (privado); autentique no GHCR
-antes do pull.
+`workflow_dispatch` publica a tag `edge` (build da `main`) para testar antes de
+marcar uma versao. O pacote herda a visibilidade do repositorio (privado);
+autentique no GHCR antes do pull.
 
 ## Validar no painel real
 
