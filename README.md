@@ -56,6 +56,31 @@ cargo run -p merger-cli -- usuarios -q search=maria -q status=ativo
 cargo run -p merger-cli -- stats
 ```
 
+## Docker
+
+O `docker-compose.yml` sobe a API publicada **somente em `127.0.0.1:8787`**
+(o bind dentro do container e `0.0.0.0:8787`), com auditoria em `./audit` e
+healthcheck TCP via bash.
+
+```bash
+cp .env.example .env    # preencha ZENITH_* (o compose usa env_file)
+docker compose up -d --build
+curl -s http://127.0.0.1:8787/health
+```
+
+O runtime da imagem nao traz `curl`; o healthcheck usa
+`/dev/tcp/127.0.0.1/8787` (bash do `debian:bookworm-slim`).
+
+Imagem publicada no GHCR pelo workflow `.github/workflows/docker.yml` quando
+uma tag `v*` e enviada (ou por `workflow_dispatch`):
+
+```bash
+docker pull ghcr.io/ericlesrobsom/zenith4k-api:0.1.0
+```
+
+O pacote herda a visibilidade do repositorio (privado); autentique no GHCR
+antes do pull.
+
 ## Validar no painel real
 
 1. Preencha `.env` (`ZENITH_URL`, `ZENITH_USER`, `ZENITH_PASS`).
