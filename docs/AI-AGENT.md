@@ -273,6 +273,9 @@ curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
   `geracao`.
 - O `m3u8_list` contem usuario/senha do cliente final: mande, mas nunca peca de
   volta no log.
+- Sessao de **revenda**: `/v1/apps-ibo/contas` lista so as contas liberadas
+  para ela e `atribuir` responde **403 `sem_permissao`** (so a franquia dona
+  atribui).
 - Detalhes em `docs/CAPABILITIES-APPS-IBO.md`.
 
 ## Receitas

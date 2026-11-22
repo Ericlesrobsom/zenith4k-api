@@ -73,6 +73,22 @@ Resposta de sucesso:
   painel. O `dono` e o username da revenda; o cliente resolve o `dono_id` na
   lista `donos` devolvida pela conta.
 
+## Sessao de revenda (fase 2)
+
+Quando a sessao e de uma **sub-revenda**:
+
+- `GET /v1/apps-ibo/contas` devolve **so as contas que o painel liberou para
+  ela** (vinculo nominal em `msproapp_conta_revendas` ou o atalho
+  `compartilhado=1` da franquia raiz). A API nao amplia nada: mescla
+  `minhas` + `disponiveis` exatamente como veio.
+- Contas globais do admin (`franquia_user` vazio) sao visiveis para todos;
+  contas de outra franquia nunca aparecem.
+- `pode_atribuir` vem `false`; `POST /v1/apps-ibo/clientes/{id}/atribuir`
+  devolve **403 `sem_permissao`** (o painel tambem responde `apenas_franquia`).
+- Ativar, listar e excluir dentro da conta liberada continuam permitidos,
+  sujeitos ao feature gate `msproapp` da revenda.
+- O e-mail e a lista `liberadas` da conta nunca saem no resumo da revenda.
+
 ## Anti-leak
 
 - `GET /v1/apps-ibo/contas` devolve **apenas** `id`, `apelido`, `conectada` e

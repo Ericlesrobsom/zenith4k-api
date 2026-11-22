@@ -143,6 +143,18 @@ impl MergerClient {
         }
 
         let listagem = self.apps_ibo_clientes_raw(conta).await?;
+        // O painel so deixa a franquia DONA atribuir (`contexto.Dona`). Para a
+        // revenda o campo vem `false`; recusamos aqui com 403 claro em vez de
+        // cair no "dono nao encontrado" (a lista `donos` vem vazia pra ela).
+        if !listagem
+            .get("pode_atribuir")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            return Err(ApiError::Forbidden(
+                "somente a franquia dona atribui clientes Apps Ibo".into(),
+            ));
+        }
         let dono_id = listagem
             .get("donos")
             .and_then(Value::as_array)
