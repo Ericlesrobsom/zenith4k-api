@@ -260,6 +260,25 @@ enum Command {
         #[arg(long)]
         dono: String,
     },
+    /// Saldo Apps Ativa (R$ em centavos).
+    AppsAtivaSaldo,
+    /// Catalogo de aplicativos Apps Ativa.
+    AppsAtivaApps,
+    /// Movimentacoes de credito Apps Ativa.
+    AppsAtivaHistorico,
+    /// Ativacoes Apps Ativa (com status).
+    AppsAtivaAtivacoes {
+        /// Filtra por status (Solicitado, Ativado, Reprovado, ...).
+        #[arg(long)]
+        status: Option<String>,
+    },
+    /// Solicita uma ativacao paga Apps Ativa.
+    AppsAtivaAtivar {
+        #[arg(long, conflicts_with = "file")]
+        json: Option<String>,
+        #[arg(long, value_name = "caminho", conflicts_with = "json")]
+        file: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -513,6 +532,27 @@ async fn main() -> Result<()> {
         Command::AppsIboAtribuir { id, conta, dono } => {
             client.ensure_login().await?;
             print_json(&client.apps_ibo_atribuir(conta, &id, &dono).await?)?;
+        }
+        Command::AppsAtivaSaldo => {
+            client.ensure_login().await?;
+            print_json(&client.apps_ativa_saldo().await?)?;
+        }
+        Command::AppsAtivaApps => {
+            client.ensure_login().await?;
+            print_json(&client.apps_ativa_apps().await?)?;
+        }
+        Command::AppsAtivaHistorico => {
+            client.ensure_login().await?;
+            print_json(&client.apps_ativa_historico().await?)?;
+        }
+        Command::AppsAtivaAtivacoes { status } => {
+            client.ensure_login().await?;
+            print_json(&client.apps_ativa_ativacoes(status.as_deref()).await?)?;
+        }
+        Command::AppsAtivaAtivar { json, file } => {
+            let body = read_json_arg(json, file)?;
+            client.ensure_login().await?;
+            print_json(&client.apps_ativa_ativar(body).await?)?;
         }
         Command::Stats => {
             client.ensure_login().await?;

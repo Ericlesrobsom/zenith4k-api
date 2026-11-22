@@ -52,6 +52,9 @@
       "name": "painel"
     },
     {
+      "name": "apps-ativa"
+    },
+    {
       "name": "apps-ibo"
     }
   ],
@@ -1462,6 +1465,135 @@
         }
       }
     },
+    "/v1/apps-ativa/saldo": {
+      "get": {
+        "operationId": "saldoAppsAtiva",
+        "tags": [
+          "apps-ativa"
+        ],
+        "summary": "Saldo Apps Ativa em R$ (centavos)",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CorpoDoPainel"
+          },
+          "401": {
+            "$ref": "#/components/responses/NaoAutorizado"
+          },
+          "502": {
+            "$ref": "#/components/responses/ErroPainel"
+          }
+        }
+      }
+    },
+    "/v1/apps-ativa/apps": {
+      "get": {
+        "operationId": "catalogoAppsAtiva",
+        "tags": [
+          "apps-ativa"
+        ],
+        "summary": "Catalogo de aplicativos pagos",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CorpoDoPainel"
+          },
+          "401": {
+            "$ref": "#/components/responses/NaoAutorizado"
+          },
+          "502": {
+            "$ref": "#/components/responses/ErroPainel"
+          }
+        }
+      }
+    },
+    "/v1/apps-ativa/historico": {
+      "get": {
+        "operationId": "historicoAppsAtiva",
+        "tags": [
+          "apps-ativa"
+        ],
+        "summary": "Movimentacoes de credito",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CorpoDoPainel"
+          },
+          "401": {
+            "$ref": "#/components/responses/NaoAutorizado"
+          },
+          "502": {
+            "$ref": "#/components/responses/ErroPainel"
+          }
+        }
+      }
+    },
+    "/v1/apps-ativa/ativacoes": {
+      "get": {
+        "operationId": "ativacoesAppsAtiva",
+        "tags": [
+          "apps-ativa"
+        ],
+        "summary": "Ativacoes com status",
+        "description": "Status muda apenas pelo webhook do Ative App; nao ha refresh/polling\nno escopo cliente.\n",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Solicitado, Ativado, Reprovado, Incorreto, ..."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CorpoDoPainel"
+          },
+          "401": {
+            "$ref": "#/components/responses/NaoAutorizado"
+          },
+          "502": {
+            "$ref": "#/components/responses/ErroPainel"
+          }
+        }
+      }
+    },
+    "/v1/apps-ativa/ativar": {
+      "post": {
+        "operationId": "ativarAppsAtiva",
+        "tags": [
+          "apps-ativa"
+        ],
+        "summary": "Solicita uma ativacao paga",
+        "description": "O MAC e normalizado para `aa:bb:cc:dd:ee:ff` (hex minusculo) **antes**\ndo request; invalido vira 400 `mac_invalido` sem debitar saldo.\n`{ok:false}` do painel (saldo/provedor) vira 409.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppAtivaAtivar"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CorpoDoPainel"
+          },
+          "400": {
+            "$ref": "#/components/responses/RequisicaoInvalida"
+          },
+          "401": {
+            "$ref": "#/components/responses/NaoAutorizado"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErroNegocio"
+          },
+          "502": {
+            "$ref": "#/components/responses/ErroPainel"
+          }
+        }
+      }
+    },
     "/v1/apps-ibo/contas": {
       "get": {
         "operationId": "listarContasAppsIbo",
@@ -2364,6 +2496,32 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 3650
+          }
+        }
+      },
+      "AppAtivaAtivar": {
+        "type": "object",
+        "required": [
+          "app_uuid",
+          "mac_app"
+        ],
+        "properties": {
+          "app_uuid": {
+            "type": "string",
+            "description": "UUID do catalogo (`GET /v1/apps-ativa/apps`)."
+          },
+          "mac_app": {
+            "type": "string",
+            "description": "Aceita `:`, `-`, `.` e espaco; enviado como hex minusculo."
+          },
+          "key_app": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Opcional, depende do app; sem espacos/controle."
+          },
+          "descricao": {
+            "type": "string",
+            "maxLength": 200
           }
         }
       },

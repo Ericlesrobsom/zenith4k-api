@@ -389,32 +389,7 @@ pub fn build_apps_ibo_ativar_body(body: &Value) -> Result<Value> {
 /// Normaliza o MAC como o painel: aceita `:`/`-`/`.`/espaco, exige 12
 /// caracteres alfanumericos e devolve `AA:BB:CC:DD:EE:FF` em maiuscula.
 pub fn normalizar_mac(bruto: &str) -> Result<String> {
-    let limpo: String = bruto
-        .trim()
-        .chars()
-        .filter(|caractere| !matches!(caractere, ':' | '-' | '.' | ' '))
-        .collect();
-    if limpo.chars().count() != 12 {
-        return Err(ApiError::Config(format!(
-            "MAC invalido {bruto:?}: precisa de 12 caracteres (letras ou numeros)"
-        )));
-    }
-    if !limpo
-        .chars()
-        .all(|caractere| caractere.is_ascii_alphanumeric())
-    {
-        return Err(ApiError::Config(format!(
-            "MAC invalido {bruto:?}: use apenas letras e numeros"
-        )));
-    }
-    let maiusculo = limpo.to_ascii_uppercase();
-    let pares: Vec<String> = maiusculo
-        .chars()
-        .collect::<Vec<char>>()
-        .chunks(2)
-        .map(|par| par.iter().collect())
-        .collect();
-    Ok(pares.join(":"))
+    crate::mac::normalizar_mac_ibo(bruto)
 }
 
 /// Normaliza preco no formato do painel (`30`, `30.5`, `1234.56`).

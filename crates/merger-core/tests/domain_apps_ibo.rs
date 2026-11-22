@@ -50,7 +50,7 @@ fn mac_aceita_formatos_comuns() {
 #[test]
 fn mac_rejeita_tamanho_errado() {
     let erro = normalizar_mac("00:1A:79:00:00").expect_err("curto");
-    assert!(matches!(erro, ApiError::Config(_)));
+    assert!(matches!(erro, ApiError::InvalidMac(_)));
 }
 
 #[test]

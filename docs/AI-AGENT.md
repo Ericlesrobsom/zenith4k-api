@@ -111,6 +111,11 @@ Todas as rotas `/v1/*` exigem `Authorization: Bearer $ZENITH_API_TOKEN`.
 | avisos | `GET /v1/avisos` | notificacoes do painel |
 | stats | `GET /v1/stats` | numeros do catalogo |
 | dashboard | `GET /v1/dashboard` | financeiro |
+| apps ativa saldo | `GET /v1/apps-ativa/saldo` | saldo em R$ (centavos) |
+| apps ativa apps | `GET /v1/apps-ativa/apps` | catalogo pago |
+| apps ativa ativar | `POST /v1/apps-ativa/ativar` | ativa MAC pago (normaliza) |
+| apps ativa ativacoes | `GET /v1/apps-ativa/ativacoes?status=` | status das ativacoes |
+| apps ativa historico | `GET /v1/apps-ativa/historico` | movimentacoes |
 | apps ibo contas | `GET /v1/apps-ibo/contas` | contas msproapp visiveis |
 | apps ibo apps | `GET /v1/apps-ibo/apps?conta=N` | apps da conta |
 | apps ibo clientes | `GET /v1/apps-ibo/clientes?conta=N` | clientes da conta |
@@ -277,6 +282,26 @@ curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
   para ela e `atribuir` responde **403 `sem_permissao`** (so a franquia dona
   atribui).
 - Detalhes em `docs/CAPABILITIES-APPS-IBO.md`.
+
+## Apps Ativa (pago)
+
+Ativacao com saldo em R$ (diferente do Apps Ibo, sem custo). O MAC e
+normalizado **antes** do request; se for invalido, a API responde
+`400 mac_invalido` sem debitar saldo.
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"app_uuid":"1c2e...","mac_app":"AB-51-6E-66-79-60","key_app":"123456"}' \
+  "$BASE/v1/apps-ativa/ativar"
+```
+
+- Aceita MAC com `:`, `-`, `.` ou espaco; envia sempre `ab:51:6e:66:79:60`.
+- `key_app` opcional: max 128, sem espacos/controle.
+- `{ok:false}` do painel (saldo insuficiente/provedor) vira **409
+  `erro_negocio_painel`** com `details.panel`.
+- Status preso em `Solicitado`: o painel so atualiza via webhook do Ative App
+  (configurado pelo admin em `webhook_info`); nao ha refresh no escopo cliente.
+- Detalhes em `docs/CAPABILITIES-APPS-ATIVA.md`.
 
 ## Receitas
 

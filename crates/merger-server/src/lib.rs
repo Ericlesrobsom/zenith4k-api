@@ -83,6 +83,17 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/tickets/fechar", post(routes::tickets_fechar))
         .route("/v1/upload", post(routes::upload))
         .route("/v1/avisos", get(routes::avisos))
+        .route("/v1/apps-ativa/saldo", get(routes::apps_ativa_saldo))
+        .route("/v1/apps-ativa/apps", get(routes::apps_ativa_apps))
+        .route(
+            "/v1/apps-ativa/historico",
+            get(routes::apps_ativa_historico),
+        )
+        .route(
+            "/v1/apps-ativa/ativacoes",
+            get(routes::apps_ativa_ativacoes),
+        )
+        .route("/v1/apps-ativa/ativar", post(routes::apps_ativa_ativar))
         .route("/v1/apps-ibo/contas", get(routes::apps_ibo_contas))
         .route("/v1/apps-ibo/apps", get(routes::apps_ibo_apps))
         .route("/v1/apps-ibo/clientes", get(routes::apps_ibo_clientes))

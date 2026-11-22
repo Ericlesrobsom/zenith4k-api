@@ -31,6 +31,9 @@ let geracao = 1;
 let iboStalePendente = true;
 const iboClientes = [];
 
+// Apps Ativa: ativacoes em memoria.
+const appsAtivaAtivacoes = [];
+
 const whoami = {
   username: "teste",
   usuario_acesso: "teste",
@@ -288,6 +291,100 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("");
     return;
+  }
+
+  // -------------------------------------------------------------------------
+  // Apps Ativa (Ative App) — ativacao paga
+  // -------------------------------------------------------------------------
+  if (path === "/merger/api/cliente/apps_ativa/saldo" && method === "GET") {
+    return json(res, 200, { ok: true, saldo_cents: 5000, has_api_key: true });
+  }
+
+  if (path === "/merger/api/apps_ativa/aplicativos" && method === "GET") {
+    return json(res, 200, {
+      ok: true,
+      cache_idade: 0,
+      items: [
+        {
+          uuid: "1c2e4a70-6869-4d79-9e2c-85f972743707",
+          nome: "IBO PLAYER SMARTER",
+          preco_cents: 1000,
+        },
+        { uuid: "sem-saldo", nome: "APP CARO", preco_cents: 999999 },
+      ],
+    });
+  }
+
+  if (path === "/merger/api/cliente/apps_ativa/historico" && method === "GET") {
+    return json(res, 200, {
+      ok: true,
+      items: [
+        {
+          id: 1,
+          de_user: "teste",
+          para_user: "",
+          valor: -10,
+          motivo: "ativacao",
+          referencia_id: "ativ:1",
+          criado_em: 1795300000,
+        },
+      ],
+    });
+  }
+
+  if (
+    path === "/merger/api/cliente/apps_ativa/historico_ativacoes" &&
+    method === "GET"
+  ) {
+    const status = url.searchParams.get("status") || "";
+    const items = appsAtivaAtivacoes.filter(
+      (item) => !status || item.status === status
+    );
+    return json(res, 200, { ok: true, items });
+  }
+
+  if (path === "/merger/api/cliente/apps_ativa/ativar" && method === "POST") {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    if (body.app_uuid === "sem-saldo") {
+      return json(res, 200, {
+        ok: false,
+        erro: "Saldo insuficiente. Atual: R$ 50,00 / custo: R$ 9999,99",
+        saldo_cents: 5000,
+      });
+    }
+    if (!/^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/.test(String(body.mac_app || ""))) {
+      return json(res, 200, {
+        ok: false,
+        erro: "mac_invalido_provedor",
+        saldo_cents: 5000,
+      });
+    }
+    const id = appsAtivaAtivacoes.length + 1;
+    const item = {
+      id,
+      app_uuid: body.app_uuid,
+      app_nome: "IBO PLAYER SMARTER",
+      mac_app: body.mac_app,
+      key_app: body.key_app || "",
+      status: "Solicitado",
+      valor_cents: 1000,
+      id_cobranca: `cobranca-${id}`,
+      descricao: body.descricao || "",
+      criado_em: Math.floor(Date.now() / 1000),
+      atualizado_em: Math.floor(Date.now() / 1000),
+    };
+    appsAtivaAtivacoes.push(item);
+    return json(res, 200, {
+      ok: true,
+      ativacao_id: id,
+      id_cobranca: item.id_cobranca,
+      mensagem: "solicitada",
+      preco_cents: 1000,
+      app_nome: item.app_nome,
+      saldo_cents: 4000,
+      mac_recebido: body.mac_app,
+      key_recebida: body.key_app || "",
+    });
   }
 
   // -------------------------------------------------------------------------

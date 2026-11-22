@@ -1005,6 +1005,63 @@ pub async fn revendas_convite_config_salvar(
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// Apps Ativa (Ative App) — ativacao paga, saldo e historico
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct AtivacoesAtivaQuery {
+    pub status: Option<String>,
+}
+
+/// `GET /v1/apps-ativa/saldo` — saldo em R$ (centavos).
+pub async fn apps_ativa_saldo(State(st): State<AppState>) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data = login_retry!(st, st.client.apps_ativa_saldo()).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
+/// `GET /v1/apps-ativa/apps` — catalogo de aplicativos.
+pub async fn apps_ativa_apps(State(st): State<AppState>) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data = login_retry!(st, st.client.apps_ativa_apps()).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
+/// `GET /v1/apps-ativa/historico` — movimentacoes de credito.
+pub async fn apps_ativa_historico(State(st): State<AppState>) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data = login_retry!(st, st.client.apps_ativa_historico()).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
+/// `GET /v1/apps-ativa/ativacoes?status=` — ativacoes com status.
+pub async fn apps_ativa_ativacoes(
+    State(st): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<AtivacoesAtivaQuery>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let status = query.status.as_deref();
+    let data = login_retry!(st, st.client.apps_ativa_ativacoes(status)).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
+/// `POST /v1/apps-ativa/ativar` — ativa um MAC (normaliza antes do debito).
+pub async fn apps_ativa_ativar(
+    State(st): State<AppState>,
+    ApiJson(body): ApiJson<Value>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data =
+        login_retry!(st, st.client.apps_ativa_ativar(body.clone())).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
+// ---------------------------------------------------------------------------
 // Apps Ibo (msproapp) — contas, apps, clientes, ativacao e atribuicao
 // ---------------------------------------------------------------------------
 

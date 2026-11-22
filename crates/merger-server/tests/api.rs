@@ -94,6 +94,16 @@ async fn mapeamento_de_erros_do_painel_para_http() {
         ),
         (ApiError::InvalidTwoFactor, 401, "codigo_2fa_invalido"),
         (ApiError::StaleGeneration, 409, "conta_desatualizada"),
+        (
+            ApiError::InvalidMac("MAC invalido".into()),
+            400,
+            "mac_invalido",
+        ),
+        (
+            ApiError::InvalidKeyApp("key invalida".into()),
+            400,
+            "key_app_invalida",
+        ),
         (ApiError::Forbidden("x".into()), 403, "sem_permissao"),
         (ApiError::NotFound, 404, "nao_encontrado"),
         (
@@ -718,6 +728,56 @@ async fn apps_ibo_validam_entrada_sem_rede() {
     let (status, body) = send(router, req).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["error"]["code"], "requisicao_invalida");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------------------
+// Apps Ativa (Ative App)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn apps_ativa_exigem_token() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+    let casos = [
+        ("GET", "/v1/apps-ativa/saldo", ""),
+        ("GET", "/v1/apps-ativa/apps", ""),
+        ("GET", "/v1/apps-ativa/historico", ""),
+        ("GET", "/v1/apps-ativa/ativacoes", ""),
+        ("POST", "/v1/apps-ativa/ativar", "{}"),
+    ];
+    for (metodo, uri, corpo) in casos {
+        let req = request(metodo, uri, None, corpo);
+        let (status, body) = send(router.clone(), req).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{metodo} {uri}");
+        assert_eq!(body["ok"], false, "{metodo} {uri}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn apps_ativa_valida_mac_e_key_antes_do_painel() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+
+    for mac in ["abc", "gg:51:6e:66:79:60"] {
+        let corpo = format!(r#"{{"app_uuid":"x","mac_app":"{mac}"}}"#);
+        let req = request("POST", "/v1/apps-ativa/ativar", Some("tok"), &corpo);
+        let (status, body) = send(router.clone(), req).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "mac {mac}");
+        assert_eq!(body["error"]["code"], "mac_invalido", "mac {mac}");
+    }
+
+    let req = request(
+        "POST",
+        "/v1/apps-ativa/ativar",
+        Some("tok"),
+        r#"{"app_uuid":"x","mac_app":"ab516e667960","key_app":"12 34"}"#,
+    );
+    let (status, body) = send(router, req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "key_app_invalida");
 
     let _ = std::fs::remove_dir_all(&dir);
 }

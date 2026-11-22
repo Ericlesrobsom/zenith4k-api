@@ -4,6 +4,7 @@
 //! deixam o cliente generico [`crate::MergerClient::raw`] cobrir qualquer rota
 //! que ainda nao tenha atalho.
 
+pub mod apps_ativa;
 pub mod apps_ibo;
 pub mod avisos;
 pub mod catalogo;

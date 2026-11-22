@@ -259,6 +259,7 @@ O CI (`.github/workflows/ci.yml`) roda os tres em `ubuntu-latest`.
   painel (874 rotas).
 - [`docs/AUTH.md`](docs/AUTH.md) — fluxo de login/2FA do painel.
 - [`docs/CAPABILITIES-REVENDAS.md`](docs/CAPABILITIES-REVENDAS.md),
-  [`docs/CAPABILITIES-CONTEUDO.md`](docs/CAPABILITIES-CONTEUDO.md) e
+  [`docs/CAPABILITIES-CONTEUDO.md`](docs/CAPABILITIES-CONTEUDO.md),
+  [`docs/CAPABILITIES-APPS-ATIVA.md`](docs/CAPABILITIES-APPS-ATIVA.md) e
   [`docs/CAPABILITIES-APPS-IBO.md`](docs/CAPABILITIES-APPS-IBO.md) — operacoes
   por dominio com exemplos.

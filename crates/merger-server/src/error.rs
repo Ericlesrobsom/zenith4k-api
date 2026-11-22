@@ -46,6 +46,8 @@ impl From<ApiError> for AppError {
             ApiError::NotAuthenticated => (StatusCode::UNAUTHORIZED, "nao_autenticado"),
             ApiError::SessionExpired => (StatusCode::UNAUTHORIZED, "sessao_expirada"),
             ApiError::StaleGeneration => (StatusCode::CONFLICT, "conta_desatualizada"),
+            ApiError::InvalidMac(_) => (StatusCode::BAD_REQUEST, "mac_invalido"),
+            ApiError::InvalidKeyApp(_) => (StatusCode::BAD_REQUEST, "key_app_invalida"),
             ApiError::TwoFactorRequired { .. } => {
                 (StatusCode::PRECONDITION_REQUIRED, "dois_fatores_necessario")
             }

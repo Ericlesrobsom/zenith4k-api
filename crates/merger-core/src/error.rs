@@ -22,6 +22,12 @@ pub enum ApiError {
     #[error("conta desatualizada no painel (geracao mudou); tente novamente")]
     StaleGeneration,
 
+    #[error("{0}")]
+    InvalidMac(String),
+
+    #[error("{0}")]
+    InvalidKeyApp(String),
+
     #[error("sem permissao no painel: {0}")]
     Forbidden(String),
 
