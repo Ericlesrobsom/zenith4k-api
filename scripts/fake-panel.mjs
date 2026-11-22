@@ -26,6 +26,11 @@ const revendas = [
 ];
 let proximoId = 2;
 
+// Apps Ibo: geracao com uma troca simulada no primeiro POST.
+let geracao = 1;
+let iboStalePendente = true;
+const iboClientes = [];
+
 const whoami = {
   username: "teste",
   usuario_acesso: "teste",
@@ -283,6 +288,169 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("");
     return;
+  }
+
+  // -------------------------------------------------------------------------
+  // Apps Ibo (msproapp) — inclui 409 geracao_alterada na primeira mutacao
+  // -------------------------------------------------------------------------
+  if (path === "/merger/api/cliente/msproapp_contas" && method === "GET") {
+    return json(res, 200, {
+      ok: true,
+      minhas: [
+        {
+          id: 36,
+          apelido: "Apps IBO",
+          painel: "https://gerenciaapp.top",
+          email: "teste@exemplo.test",
+          conectada: true,
+          geracao,
+          cofre_uuid: "cofre-secreto",
+          pode_atribuir: false,
+          compartilhado: false,
+          liberadas: [],
+        },
+      ],
+      disponiveis: [],
+      pode_cadastrar: true,
+    });
+  }
+
+  if (path === "/merger/api/cliente/msproapp/aplicativos" && method === "GET") {
+    return json(res, 200, {
+      ok: true,
+      aplicativos: [
+        { id: "10", nome: "IBO REVENDA" },
+        { id: "11", nome: "ZONE X" },
+        { id: "21", nome: "Gerencia Max" },
+      ],
+      zone_x: "11",
+    });
+  }
+
+  if (path === "/merger/api/cliente/msproapp/clientes" && method === "GET") {
+    return json(res, 200, {
+      ok: true,
+      clientes: iboClientes,
+      donos: [
+        { id: 1, username: "revenda1", usuario_acesso: "revenda1" },
+      ],
+      pode_atribuir: true,
+      geracao,
+      cofre_uuid: "cofre-secreto",
+      pagina: 1,
+      total_paginas: 1,
+      total: iboClientes.length,
+      total_geral: iboClientes.length,
+    });
+  }
+
+  if (path === "/merger/api/cliente/msproapp/clientes" && method === "POST") {
+    if (String(url.searchParams.get("geracao")) !== String(geracao)) {
+      return json(res, 409, {
+        ok: false,
+        erro: "geracao_alterada",
+        msg: "A conexão da conta mudou.",
+      });
+    }
+    // Simula o painel trocando a geracao entre a leitura e o POST (uma vez).
+    if (iboStalePendente) {
+      iboStalePendente = false;
+      geracao += 1;
+      return json(res, 409, {
+        ok: false,
+        erro: "geracao_alterada",
+        msg: "A conexão da conta mudou durante a abertura.",
+      });
+    }
+    iboStalePendente = false;
+    const body = JSON.parse((await readBody(req)) || "{}");
+    if (!body.mac_device || String(body.mac_device).replace(/:/g, "").length !== 12) {
+      return json(res, 400, { ok: false, erro: "entrada_invalida", msg: "MAC inválido" });
+    }
+    if (!body.server_name) {
+      return json(res, 400, {
+        ok: false,
+        erro: "entrada_invalida",
+        msg: "o NOME DO SERVIDOR é obrigatório",
+      });
+    }
+    if (!body.ranking_app_id) {
+      return json(res, 400, {
+        ok: false,
+        erro: "entrada_invalida",
+        msg: "escolha o APLICATIVO",
+      });
+    }
+    if (!body.expire_date) {
+      return json(res, 400, {
+        ok: false,
+        erro: "entrada_invalida",
+        msg: "validade inválida",
+      });
+    }
+    if (body.modo_selecao === "1" && !body.m3u8_list) {
+      return json(res, 400, {
+        ok: false,
+        erro: "entrada_invalida",
+        msg: "a LISTA M3U8 é obrigatória no modo M3U8",
+      });
+    }
+    const id = String(4801000 + iboClientes.length + 1);
+    const novo = {
+      id,
+      id_local: `local-${id}`,
+      dono_id: 1,
+      dono_user: "revenda1",
+      dono_acesso: "revenda1",
+      sem_dono: false,
+      mac: body.mac_device,
+      nome: body.server_name,
+      servidor: "exemplo.test",
+      validade: body.expire_date,
+      app_id: body.ranking_app_id,
+      preco: body.price,
+      whatsapp: body.whatsapp || "",
+      modo: body.modo_selecao,
+    };
+    iboClientes.push(novo);
+    return json(res, 200, {
+      ok: true,
+      msg: "cliente_criado",
+      mac: novo.mac,
+      id: novo.id,
+      id_local: novo.id_local,
+    });
+  }
+
+  if (path === "/merger/api/cliente/msproapp/cliente" && method === "DELETE") {
+    if (String(url.searchParams.get("geracao")) !== String(geracao)) {
+      return json(res, 409, {
+        ok: false,
+        erro: "geracao_alterada",
+        msg: "A conexão da conta mudou.",
+      });
+    }
+    const id = url.searchParams.get("id");
+    const indice = iboClientes.findIndex((c) => c.id === id);
+    if (indice < 0) {
+      return json(res, 404, { ok: false, erro: "nao_encontrado", msg: "Cliente não encontrado." });
+    }
+    iboClientes.splice(indice, 1);
+    return json(res, 200, { ok: true, msg: "cliente_excluido" });
+  }
+
+  if (
+    path === "/merger/api/cliente/msproapp/clientes/atribuir" &&
+    method === "POST"
+  ) {
+    if (String(url.searchParams.get("geracao")) !== String(geracao)) {
+      return json(res, 409, {
+        ok: false,
+        erro: "geracao_alterada",
+        msg: "A conexão da conta mudou.",
+      });
+    }
+    return json(res, 200, { ok: true, atribuidos: 1 });
   }
 
   if (path === "/merger/api/cliente/revendas/nota" && method === "POST") {

@@ -45,6 +45,7 @@ impl From<ApiError> for AppError {
         let (status, code) = match &err {
             ApiError::NotAuthenticated => (StatusCode::UNAUTHORIZED, "nao_autenticado"),
             ApiError::SessionExpired => (StatusCode::UNAUTHORIZED, "sessao_expirada"),
+            ApiError::StaleGeneration => (StatusCode::CONFLICT, "conta_desatualizada"),
             ApiError::TwoFactorRequired { .. } => {
                 (StatusCode::PRECONDITION_REQUIRED, "dois_fatores_necessario")
             }

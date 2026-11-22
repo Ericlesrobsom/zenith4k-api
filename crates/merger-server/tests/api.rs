@@ -93,6 +93,7 @@ async fn mapeamento_de_erros_do_painel_para_http() {
             "dois_fatores_necessario",
         ),
         (ApiError::InvalidTwoFactor, 401, "codigo_2fa_invalido"),
+        (ApiError::StaleGeneration, 409, "conta_desatualizada"),
         (ApiError::Forbidden("x".into()), 403, "sem_permissao"),
         (ApiError::NotFound, 404, "nao_encontrado"),
         (
@@ -651,4 +652,72 @@ async fn erro_de_negocio_do_painel_vira_409() {
     let body: Value = serde_json::from_slice(&bytes).expect("json do erro");
     assert_eq!(body["error"]["code"], "erro_negocio_painel");
     assert_eq!(body["error"]["details"]["panel"]["ok"], false);
+}
+
+// ---------------------------------------------------------------------------
+// Apps Ibo (msproapp)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn apps_ibo_exigem_token() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+    let casos = [
+        ("GET", "/v1/apps-ibo/contas", ""),
+        ("GET", "/v1/apps-ibo/apps?conta=36", ""),
+        ("GET", "/v1/apps-ibo/clientes?conta=36", ""),
+        ("POST", "/v1/apps-ibo/ativar", "{}"),
+        ("DELETE", "/v1/apps-ibo/clientes/1?conta=36", ""),
+        ("POST", "/v1/apps-ibo/clientes/1/atribuir?conta=36", "{}"),
+    ];
+    for (metodo, uri, corpo) in casos {
+        let req = request(metodo, uri, None, corpo);
+        let (status, body) = send(router.clone(), req).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{metodo} {uri}");
+        assert_eq!(body["ok"], false, "{metodo} {uri}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn apps_ibo_validam_entrada_sem_rede() {
+    let dir = temp_dir();
+    let router = app(state(Some("tok"), &dir));
+
+    let req = request("GET", "/v1/apps-ibo/apps", Some("tok"), "");
+    let (status, body) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "requisicao_invalida");
+
+    let req = request(
+        "DELETE",
+        "/v1/apps-ibo/clientes/1?conta=36",
+        Some("tok"),
+        "",
+    );
+    let (status, body) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "confirmacao_necessaria");
+
+    let req = request(
+        "POST",
+        "/v1/apps-ibo/ativar",
+        Some("tok"),
+        r#"{"conta":36}"#,
+    );
+    let (status, body) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "parametros_invalidos");
+
+    let req = request(
+        "POST",
+        "/v1/apps-ibo/clientes/1/atribuir?conta=36",
+        Some("tok"),
+        "{}",
+    );
+    let (status, body) = send(router, req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "requisicao_invalida");
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

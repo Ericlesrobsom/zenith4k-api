@@ -41,6 +41,7 @@ tags:
   - name: catalogo
   - name: suporte
   - name: painel
+  - name: apps-ibo
 paths:
   /health:
     get:
@@ -913,6 +914,152 @@ paths:
           $ref: '#/components/responses/NaoAutorizado'
         '502':
           $ref: '#/components/responses/ErroPainel'
+  /v1/apps-ibo/contas:
+    get:
+      operationId: listarContasAppsIbo
+      tags: [apps-ibo]
+      summary: Contas Apps Ibo visiveis (sanitizadas)
+      description: |
+        Retorna apenas `id`, `apelido`, `conectada` e `painel`.
+        `cofre_uuid`, e-mail e credenciais nunca sao expostos.
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/apps-ibo/apps:
+    get:
+      operationId: listarAppsIbo
+      tags: [apps-ibo]
+      summary: Aplicativos de uma conta Apps Ibo
+      parameters:
+        - name: conta
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/apps-ibo/clientes:
+    get:
+      operationId: listarClientesAppsIbo
+      tags: [apps-ibo]
+      summary: Clientes de uma conta Apps Ibo
+      description: Resumo sem `m3u8_list`; `cofre_uuid` e `geracao` sao removidos.
+      parameters:
+        - name: conta
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '409':
+          $ref: '#/components/responses/ErroNegocio'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/apps-ibo/ativar:
+    post:
+      operationId: ativarAppsIbo
+      tags: [apps-ibo]
+      summary: Ativa um MAC na conta Apps Ibo
+      description: |
+        A `geracao` da conta e lida e enviada automaticamente; se o painel
+        responder `geracao_alterada`, a operacao e refeita uma vez.
+        `m3u8_list` contem credenciais do cliente final e nao e devolvida.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppIboAtivar'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '409':
+          $ref: '#/components/responses/ErroNegocio'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/apps-ibo/clientes/{id}:
+    delete:
+      operationId: excluirClienteAppsIbo
+      tags: [apps-ibo]
+      summary: Remove um cliente Apps Ibo (destrutivo)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: conta
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: confirm
+          in: query
+          required: true
+          schema:
+            type: boolean
+            const: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '409':
+          $ref: '#/components/responses/ConflitoConfirmacao'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
+  /v1/apps-ibo/clientes/{id}/atribuir:
+    post:
+      operationId: atribuirClienteAppsIbo
+      tags: [apps-ibo]
+      summary: Atribui um cliente Apps Ibo a uma revenda
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: conta
+          in: query
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppIboAtribuir'
+      responses:
+        '200':
+          $ref: '#/components/responses/CorpoDoPainel'
+        '400':
+          $ref: '#/components/responses/RequisicaoInvalida'
+        '401':
+          $ref: '#/components/responses/NaoAutorizado'
+        '502':
+          $ref: '#/components/responses/ErroPainel'
   /v1/stats:
     get:
       operationId: estatisticas
@@ -1311,6 +1458,67 @@ components:
           type: integer
           minimum: 1
           maximum: 3650
+    AppIboAtivar:
+      type: object
+      required: [conta, app_id, mac, server_name, expire_date]
+      properties:
+        conta:
+          type: integer
+        app_id:
+          type: string
+          description: ID do app na lista viva (`ranking_app_id`).
+        mac:
+          type: string
+          description: 12 caracteres (aceita `:`, `-`, `.` ou espaco).
+        modo:
+          type: string
+          enum: ["0", "1"]
+          default: "1"
+          description: '"1" = M3U8; "0" = XTeam.'
+        server_name:
+          type: string
+        price:
+          type: string
+          default: "0"
+          description: Aceita `30`, `30,50` e `1.234,56`.
+        expire_date:
+          type: string
+          format: date
+          description: AAAA-MM-DD.
+        m3u8_list:
+          type: string
+          description: Obrigatoria no modo M3U8; contem credenciais do cliente.
+        xteam_username:
+          type: string
+        xteam_password:
+          type: string
+        dns:
+          type: string
+        username_login:
+          type: string
+          description: Usado pelo app ZONE X (id 11).
+        password_login:
+          type: string
+        whatsapp:
+          type: string
+        url_epg:
+          type: string
+        plan_id:
+          type: string
+        account_username:
+          type: string
+        account_password:
+          type: string
+        is_trial:
+          type: boolean
+          default: false
+    AppIboAtribuir:
+      type: object
+      required: [dono]
+      properties:
+        dono:
+          type: string
+          description: Username da revenda da arvore.
     RevendaNova:
       type: object
       required: [username, password]

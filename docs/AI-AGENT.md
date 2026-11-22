@@ -111,6 +111,12 @@ Todas as rotas `/v1/*` exigem `Authorization: Bearer $ZENITH_API_TOKEN`.
 | avisos | `GET /v1/avisos` | notificacoes do painel |
 | stats | `GET /v1/stats` | numeros do catalogo |
 | dashboard | `GET /v1/dashboard` | financeiro |
+| apps ibo contas | `GET /v1/apps-ibo/contas` | contas msproapp visiveis |
+| apps ibo apps | `GET /v1/apps-ibo/apps?conta=N` | apps da conta |
+| apps ibo clientes | `GET /v1/apps-ibo/clientes?conta=N` | clientes da conta |
+| ativar apps ibo | `POST /v1/apps-ibo/ativar` | ativa um MAC |
+| excluir apps ibo | `DELETE /v1/apps-ibo/clientes/{id}?conta=N&confirm=true` | **destrutivo** |
+| atribuir apps ibo | `POST /v1/apps-ibo/clientes/{id}/atribuir?conta=N` | `{dono}` |
 
 ### Filtros de usuarios
 
@@ -241,6 +247,33 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 - Para tickets, prefira `/v1/tickets/criar` e `/v1/tickets/responder` (JSON,
   sem anexo). Para fechar, `/v1/tickets/fechar?id=N` (o painel exige `id` na
   query, nunca no corpo).
+
+## Apps Ibo (msproapp)
+
+Ativacao por MAC, sem custo (diferente do `apps_ativa`, que e pago). A
+`geracao` da conta e gerenciada pela API: se o painel responder
+`geracao_alterada`, a operacao e refeita uma vez. Se persistir, a resposta e
+`409 conta_desatualizada`.
+
+```bash
+# contas visiveis (sem credenciais/cofre)
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/v1/apps-ibo/contas"
+
+# ativar
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"conta":36,"app_id":"10","mac":"02:11:22:33:44:55","modo":"1","server_name":"QA","price":"0","expire_date":"2026-12-31","m3u8_list":"http://.../get.php?username=...&password=..."}' \
+  "$BASE/v1/apps-ibo/ativar"
+
+# excluir (destrutivo)
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
+  "$BASE/v1/apps-ibo/clientes/4801338?conta=36&confirm=true"
+```
+
+- `GET /v1/apps-ibo/clientes` nao devolve `m3u8_list`, `cofre_uuid` nem a
+  `geracao`.
+- O `m3u8_list` contem usuario/senha do cliente final: mande, mas nunca peca de
+  volta no log.
+- Detalhes em `docs/CAPABILITIES-APPS-IBO.md`.
 
 ## Receitas
 

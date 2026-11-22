@@ -219,6 +219,47 @@ enum Command {
     Stats,
     /// Dashboard financeiro.
     Dashboard,
+    /// Lista as contas Apps Ibo (msproapp).
+    AppsIboContas,
+    /// Lista os aplicativos de uma conta Apps Ibo.
+    AppsIboApps {
+        /// ID da conta.
+        conta: i64,
+    },
+    /// Lista os clientes de uma conta Apps Ibo.
+    AppsIboClientes {
+        /// ID da conta.
+        conta: i64,
+    },
+    /// Ativa um MAC na conta Apps Ibo.
+    AppsIboAtivar {
+        #[arg(long, conflicts_with = "file")]
+        json: Option<String>,
+        #[arg(long, value_name = "caminho", conflicts_with = "json")]
+        file: Option<PathBuf>,
+    },
+    /// Remove um cliente Apps Ibo (destrutivo).
+    AppsIboExcluir {
+        /// ID externo do cliente.
+        id: String,
+        /// ID da conta.
+        #[arg(long)]
+        conta: i64,
+        /// Confirma a exclusao.
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Atribui um cliente Apps Ibo a uma revenda.
+    AppsIboAtribuir {
+        /// ID externo do cliente.
+        id: String,
+        /// ID da conta.
+        #[arg(long)]
+        conta: i64,
+        /// Username da revenda.
+        #[arg(long)]
+        dono: String,
+    },
 }
 
 #[tokio::main]
@@ -444,6 +485,34 @@ async fn main() -> Result<()> {
             client.ensure_login().await?;
             let resposta = client.tickets_fechar(id).await?;
             print_json(&resposta)?;
+        }
+        Command::AppsIboContas => {
+            client.ensure_login().await?;
+            print_json(&client.apps_ibo_contas().await?)?;
+        }
+        Command::AppsIboApps { conta } => {
+            client.ensure_login().await?;
+            print_json(&client.apps_ibo_apps(conta).await?)?;
+        }
+        Command::AppsIboClientes { conta } => {
+            client.ensure_login().await?;
+            print_json(&client.apps_ibo_clientes(conta).await?)?;
+        }
+        Command::AppsIboAtivar { json, file } => {
+            let body = read_json_arg(json, file)?;
+            client.ensure_login().await?;
+            print_json(&client.apps_ibo_ativar(body).await?)?;
+        }
+        Command::AppsIboExcluir { id, conta, confirm } => {
+            if !confirm {
+                bail!("exclusao de cliente Apps Ibo exige --confirm");
+            }
+            client.ensure_login().await?;
+            print_json(&client.apps_ibo_excluir(&id, conta, confirm).await?)?;
+        }
+        Command::AppsIboAtribuir { id, conta, dono } => {
+            client.ensure_login().await?;
+            print_json(&client.apps_ibo_atribuir(conta, &id, &dono).await?)?;
         }
         Command::Stats => {
             client.ensure_login().await?;

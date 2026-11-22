@@ -1004,6 +1004,106 @@ pub async fn revendas_convite_config_salvar(
 // Fallbacks
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Apps Ibo (msproapp) — contas, apps, clientes, ativacao e atribuicao
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct ContaIboQuery {
+    pub conta: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExcluirIboQuery {
+    pub conta: Option<i64>,
+    #[serde(default)]
+    pub confirm: bool,
+}
+
+fn conta_obrigatoria(conta: Option<i64>) -> Result<i64, AppError> {
+    conta
+        .filter(|conta| *conta > 0)
+        .ok_or_else(|| AppError::bad_request("query conta obrigatoria (inteiro positivo)"))
+}
+
+/// `GET /v1/apps-ibo/contas` — contas visiveis (sanitizadas).
+pub async fn apps_ibo_contas(State(st): State<AppState>) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data = login_retry!(st, st.client.apps_ibo_contas()).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
+/// `GET /v1/apps-ibo/apps?conta=N` — aplicativos da conta.
+pub async fn apps_ibo_apps(
+    State(st): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<ContaIboQuery>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let conta = conta_obrigatoria(query.conta)?;
+    let data = login_retry!(st, st.client.apps_ibo_apps(conta)).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
+/// `GET /v1/apps-ibo/clientes?conta=N` — clientes da conta.
+pub async fn apps_ibo_clientes(
+    State(st): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<ContaIboQuery>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let conta = conta_obrigatoria(query.conta)?;
+    let data = login_retry!(st, st.client.apps_ibo_clientes(conta)).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
+/// `POST /v1/apps-ibo/ativar` — ativa um MAC (modo M3U8 ou XTeam).
+pub async fn apps_ibo_ativar(
+    State(st): State<AppState>,
+    ApiJson(body): ApiJson<Value>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let data = login_retry!(st, st.client.apps_ibo_ativar(body.clone())).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
+/// `DELETE /v1/apps-ibo/clientes/{id}?conta=N&confirm=true` — remove cliente.
+pub async fn apps_ibo_excluir(
+    State(st): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    axum::extract::Query(query): axum::extract::Query<ExcluirIboQuery>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let conta = conta_obrigatoria(query.conta)?;
+    let data = login_retry!(st, st.client.apps_ibo_excluir(&id, conta, query.confirm))
+        .map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
+/// `POST /v1/apps-ibo/clientes/{id}/atribuir?conta=N` — `{dono}`.
+pub async fn apps_ibo_atribuir(
+    State(st): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    axum::extract::Query(query): axum::extract::Query<ContaIboQuery>,
+    ApiJson(body): ApiJson<Value>,
+) -> Result<Json<Value>, AppError> {
+    let started = Instant::now();
+    let conta = conta_obrigatoria(query.conta)?;
+    let dono = body
+        .get("dono")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|dono| !dono.is_empty())
+        .ok_or_else(|| AppError::bad_request("campo dono obrigatorio (username da revenda)"))?;
+    let data =
+        login_retry!(st, st.client.apps_ibo_atribuir(conta, &id, dono)).map_err(AppError::from)?;
+    let data = checar_erro_negocio(data)?;
+    Ok(success(started, data))
+}
+
 /// Fallback de rota inexistente, no envelope de erro.
 pub async fn not_found() -> AppError {
     AppError::new(

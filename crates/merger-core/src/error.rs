@@ -19,6 +19,9 @@ pub enum ApiError {
     #[error("sessao expirada no painel")]
     SessionExpired,
 
+    #[error("conta desatualizada no painel (geracao mudou); tente novamente")]
+    StaleGeneration,
+
     #[error("sem permissao no painel: {0}")]
     Forbidden(String),
 

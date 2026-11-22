@@ -83,6 +83,18 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/tickets/fechar", post(routes::tickets_fechar))
         .route("/v1/upload", post(routes::upload))
         .route("/v1/avisos", get(routes::avisos))
+        .route("/v1/apps-ibo/contas", get(routes::apps_ibo_contas))
+        .route("/v1/apps-ibo/apps", get(routes::apps_ibo_apps))
+        .route("/v1/apps-ibo/clientes", get(routes::apps_ibo_clientes))
+        .route("/v1/apps-ibo/ativar", post(routes::apps_ibo_ativar))
+        .route(
+            "/v1/apps-ibo/clientes/{id}",
+            delete(routes::apps_ibo_excluir),
+        )
+        .route(
+            "/v1/apps-ibo/clientes/{id}/atribuir",
+            post(routes::apps_ibo_atribuir),
+        )
         .route("/v1/stats", get(routes::stats))
         .route("/v1/dashboard", get(routes::dashboard))
         .layer(DefaultBodyLimit::max(25 * 1024 * 1024))
