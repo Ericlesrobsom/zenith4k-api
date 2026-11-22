@@ -91,6 +91,54 @@ Para resolver o caso das ativacoes #3/#4: copiar a URL de `webhook_info` e
 cadastrar no painel do Ative App. Um refresh sem webhook exigiria uma rota
 nova no Go consultando a API de status do provedor.
 
+### Cadastrar o webhook (admin)
+
+O token e **global** (`config_geral.apps_ativa_webhook_token`), nao e por
+franquia — por isso a rota e admin-only. Com sessao de admin:
+
+```bash
+# Ver URL + token (a URL usa o host da requisicao)
+curl -s -b cookies-admin.txt \
+  https://aplicativo.znt4kh.uk/merger/api/admin/apps_ativa/webhook_info
+
+# Rotacionar (invalida a URL antiga; atualize no Ative App na hora)
+curl -s -X POST -b cookies-admin.txt \
+  https://aplicativo.znt4kh.uk/merger/api/admin/apps_ativa/webhook_rotate
+```
+
+Formato da URL: `https://<host>/api/webhook/apps_ativa/<token>` (token de 64
+hex). Copie exatamente o que a rota devolver — o host vem da requisicao.
+
+### Ativacoes antigas (#3/#4)
+
+Cadastrar a URL **nao reprocessa** eventos passados: o Ative App so entrega
+eventos novos. As antigas continuam `Solicitado` ate:
+
+1. o provedor reenviar o webhook daquela cobranca (se tiver botao de
+   reenvio/retry no painel deles); ou
+2. alguem enviar um webhook sintetico com o token (abaixo); ou
+3. uma rota nova de refresh no Go consultando o status no provedor.
+
+Webhook sintetico (match por `id_cobranca`; `id_cobranca` e `status` sao
+obrigatorios):
+
+```bash
+curl -s -X POST "https://aplicativo.znt4kh.uk/api/webhook/apps_ativa/<TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"id_cobranca":"<ID_COBRANCA>","status":"Ativado"}'
+```
+
+- `Ativado`/`Aprovado`: so atualiza o status.
+- `Reprovado`/`Incorreto`: atualiza **e faz refund real** de `valor_cents` na
+  carteira (`origem='painel'`). So envie depois de confirmar que o provedor
+  recusou e que o credito nao foi devolvido.
+- Idempotencia: se a ativacao ja tem `webhook_recebido_em > 0` e status final,
+  a entrega e ignorada (`ignored: "duplicado"`).
+- Ativacao nao encontrada por `id_cobranca` responde 200 com `ok:false`.
+
+> O token do webhook da acesso a qualquer ativacao. Trate como segredo de
+> admin; se vazar, rotacione e atualize no Ative App.
+
 ## Erros
 
 | Situacao | HTTP local | Codigo |
