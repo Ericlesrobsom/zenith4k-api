@@ -5,3 +5,10 @@ target/
 *.log
 .merger-session.json
 audit/
+
+# Exportacoes locais (contem dados de clientes; nunca commitar)
+clientes-*.csv
+revendas*.csv
+contatos-whatsapp.csv
+jogos-hoje.csv
+*-raw.json

@@ -1,0 +1,25 @@
+services:
+  zenith4k-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: zenith4k-api:local
+    container_name: zenith4k-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # No container o bind tem que ser 0.0.0.0; o host continua acessando
+      # so por 127.0.0.1 (porta publicada abaixo).
+      ZENITH_BIND: 0.0.0.0:8787
+      ZENITH_AUDIT_DIR: /app/audit
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - ./audit:/app/audit
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8787'"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
