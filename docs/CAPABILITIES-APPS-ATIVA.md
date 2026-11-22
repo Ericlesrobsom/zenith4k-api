@@ -119,6 +119,12 @@ eventos novos. As antigas continuam `Solicitado` ate:
 2. alguem enviar um webhook sintetico com o token (abaixo); ou
 3. uma rota nova de refresh no Go consultando o status no provedor.
 
+> **Requisito duro:** o webhook casa **somente** por `id_cobranca`. Ativacao
+> com `id_cobranca` vazio **nao pode** ser atualizada por webhook sintetico —
+> o handler responde `id_cobranca obrigatorio` (400) ou
+> `id_cobranca nao encontrado localmente` (200). Foi o caso das ativacoes
+> #3/#4 reais: ambas ficaram com `id_cobranca` vazio.
+
 Webhook sintetico (match por `id_cobranca`; `id_cobranca` e `status` sao
 obrigatorios):
 
@@ -138,6 +144,32 @@ curl -s -X POST "https://aplicativo.znt4kh.uk/api/webhook/apps_ativa/<TOKEN>" \
 
 > O token do webhook da acesso a qualquer ativacao. Trate como segredo de
 > admin; se vazar, rotacione e atualize no Ative App.
+
+### Ativacao criada sem `id_cobranca`
+
+O painel so grava `id_cobranca` quando a resposta do provedor traz
+`historico_id` (ver `solicitarAtivacaoResp` em `apps_ativa_ativar.go`). Se o
+provedor aceitar a solicitacao mas responder em outro formato (ou sem id), a
+ativacao nasce `Solicitado` e **nunca** sera casada pelo webhook.
+
+Nossa API agora sinaliza isso na resposta da ativacao:
+
+```json
+{"ok":true,"ativacao_id":3,"id_cobranca":"","webhook_sincronizavel":false,
+ "aviso":"ativacao criada sem id_cobranca; o webhook do Ative App nao conseguira atualizar o status desta ativacao"}
+```
+
+Para as ativacoes antigas sem id:
+
+1. tentar o **retry/reenvio no painel do Ative App**; se ele exibir o
+   `id_cobranca` da cobranca, o sintetico passa a funcionar;
+2. se o provedor confirmar a recusa mas nao exibir o id, o estorno da #3
+   depende do suporte do provedor ou de um ajuste manual de saldo — nao
+   invente um id (o webhook nao casa e o saldo nao volta);
+3. para **novas** ativacoes, a correcao definitiva e no Go: aceitar aliases
+   (`historico_id`, `id`, `data.id`) na resposta do provedor e logar aviso
+   quando `sucesso:true` vier sem id. Ainda nao implementado (mudanca no
+   painel de producao, precisa de autorizacao).
 
 ## Erros
 

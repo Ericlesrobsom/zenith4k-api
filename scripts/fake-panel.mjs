@@ -311,6 +311,7 @@ const server = http.createServer(async (req, res) => {
           preco_cents: 1000,
         },
         { uuid: "sem-saldo", nome: "APP CARO", preco_cents: 999999 },
+        { uuid: "sem-id", nome: "APP SEM ID", preco_cents: 1000 },
       ],
     });
   }
@@ -360,15 +361,18 @@ const server = http.createServer(async (req, res) => {
       });
     }
     const id = appsAtivaAtivacoes.length + 1;
+    // app_uuid "sem-id" simula o provedor que aceita mas nao devolve
+    // historico_id (foi o caso das ativacoes #3/#4 no painel real).
+    const idCobranca = body.app_uuid === "sem-id" ? "" : `cobranca-${id}`;
     const item = {
       id,
       app_uuid: body.app_uuid,
-      app_nome: "IBO PLAYER SMARTER",
+      app_nome: body.app_uuid === "sem-id" ? "APP SEM ID" : "IBO PLAYER SMARTER",
       mac_app: body.mac_app,
       key_app: body.key_app || "",
       status: "Solicitado",
       valor_cents: 1000,
-      id_cobranca: `cobranca-${id}`,
+      id_cobranca: idCobranca,
       descricao: body.descricao || "",
       criado_em: Math.floor(Date.now() / 1000),
       atualizado_em: Math.floor(Date.now() / 1000),
@@ -377,7 +381,7 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, {
       ok: true,
       ativacao_id: id,
-      id_cobranca: item.id_cobranca,
+      id_cobranca: idCobranca,
       mensagem: "solicitada",
       preco_cents: 1000,
       app_nome: item.app_nome,

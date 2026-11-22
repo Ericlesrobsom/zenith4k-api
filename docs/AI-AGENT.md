@@ -301,6 +301,9 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
   `erro_negocio_painel`** com `details.panel`.
 - Status preso em `Solicitado`: o painel so atualiza via webhook do Ative App
   (configurado pelo admin em `webhook_info`); nao ha refresh no escopo cliente.
+- Se a ativacao voltar com `webhook_sincronizavel: false` (e `id_cobranca`
+  vazio), o webhook nunca vai casar essa ativacao — veja
+  `docs/CAPABILITIES-APPS-ATIVA.md`.
 - Detalhes em `docs/CAPABILITIES-APPS-ATIVA.md`.
 
 ## Receitas

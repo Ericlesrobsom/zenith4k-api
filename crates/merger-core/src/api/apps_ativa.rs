@@ -80,10 +80,41 @@ impl MergerClient {
     /// sem debitar saldo.
     pub async fn apps_ativa_ativar(&self, body: Value) -> Result<Value> {
         let body = build_apps_ativa_ativar_body(&body)?;
-        self.send("POST", ROTA_ATIVAR, &[], Some(&body), false)
-            .await
-            .map(|resp| resp.json_or_text())
+        let resp = self
+            .send("POST", ROTA_ATIVAR, &[], Some(&body), false)
+            .await?;
+        Ok(anotar_sincronizacao(resp.json_or_text()))
     }
+}
+
+/// Marca se a ativacao nasceu com `id_cobranca` (sem ele, o webhook do Ative
+/// App nao consegue casar a ativacao e o status fica `Solicitado` para sempre).
+fn anotar_sincronizacao(mut data: Value) -> Value {
+    if data.get("ok").and_then(Value::as_bool) != Some(true) {
+        return data;
+    }
+    let id_cobranca = data
+        .get("id_cobranca")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if let Some(obj) = data.as_object_mut() {
+        obj.insert(
+            "webhook_sincronizavel".to_string(),
+            json!(!id_cobranca.is_empty()),
+        );
+        if id_cobranca.is_empty() {
+            obj.insert(
+                "aviso".to_string(),
+                json!(
+                    "ativacao criada sem id_cobranca; o webhook do Ative App nao \
+                     conseguira atualizar o status desta ativacao"
+                ),
+            );
+        }
+    }
+    data
 }
 
 /// Corpo de `POST /cliente/apps_ativa/ativar` com MAC normalizado.
@@ -160,5 +191,39 @@ fn texto_opcional(obj: &Map<String, Value>, campo: &str) -> Result<Option<String
             }
         }
         Some(_) => Err(ApiError::Config(format!("campo {campo} deve ser string"))),
+    }
+}
+
+#[cfg(test)]
+mod testes {
+    use super::anotar_sincronizacao;
+    use serde_json::json;
+
+    #[test]
+    fn ativacao_sem_id_cobranca_ganha_aviso() {
+        let saida = anotar_sincronizacao(json!({
+            "ok": true,
+            "ativacao_id": 3,
+            "id_cobranca": "",
+        }));
+        assert_eq!(saida["webhook_sincronizavel"], false);
+        assert!(saida["aviso"].as_str().unwrap().contains("id_cobranca"));
+    }
+
+    #[test]
+    fn ativacao_com_id_cobranca_e_sincronizavel() {
+        let saida = anotar_sincronizacao(json!({
+            "ok": true,
+            "ativacao_id": 4,
+            "id_cobranca": "abc-123",
+        }));
+        assert_eq!(saida["webhook_sincronizavel"], true);
+        assert!(saida.get("aviso").is_none());
+    }
+
+    #[test]
+    fn erro_do_painel_nao_ganha_campos() {
+        let saida = anotar_sincronizacao(json!({"ok": false, "erro": "Saldo insuficiente"}));
+        assert!(saida.get("webhook_sincronizavel").is_none());
     }
 }
